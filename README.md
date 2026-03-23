@@ -1,17 +1,26 @@
+<div align="center">
+
 # UI Architect MCP
 
 **The ultimate MCP server for generating production-ready, agency-quality UI.**
 Any framework. No CSS framework lock-in. Never looks AI-generated.
 
-### **Built by [FODUU](https://www.foduu.com)** — India's Leading Web Design & Development Company
+### Built by FODUU — India's Leading Web Design & Development Company
 
-**8 Tools • 61 Components • 13 Categories • 5 Styles • 8 Frameworks**
+*8 Tools • 61 Components • 13 Categories • 5 Styles • 8 Frameworks*
 
----
+</div>
+
+***
+
+<div align="center">
 
 [Installation](#installation) | [Tools](#tools) | [Examples](#usage-examples) | [Architecture](#architecture) | [Philosophy](#design-philosophy) | [Contributing](#contributing)
 
----
+</div>
+***
+
+![1.00](assets/banner.jpg)
 
 ## What is this?
 
@@ -25,20 +34,20 @@ It solves three problems with AI-generated UI:
 
 3. **It's static and lifeless** — no hover effects, no scroll animations, no micro-interactions. UI Architect ships **61 curated components** across **5 visual styles** (flat, neumorphic, glassmorphic, gradient, animated) that all have rich CSS — shine effects, spring easings, entrance reveals, focus rings, and more.
 
----
+***
 
 ## Installation
 
 ### Requirements
 
-- Node.js 18+
-- An MCP-compatible client (Claude Desktop, Claude Code, Cursor, etc.)
+* Node.js 18+
+* An MCP-compatible client (Claude Desktop, Claude Code, Cursor, etc.)
 
 ### With Claude Desktop
 
 Add to your `claude_desktop_config.json`:
 
-```json
+```JSON
 {
   "mcpServers": {
     "ui-architect": {
@@ -51,13 +60,13 @@ Add to your `claude_desktop_config.json`:
 
 ### With Claude Code
 
-```bash
+```Shell
 claude mcp add ui-architect -- npx -y ui-architect-mcp
 ```
 
 ### Manual / From Source
 
-```bash
+```Shell
 git clone https://github.com/your-username/ui-architect-mcp.git
 cd ui-architect-mcp
 npm install
@@ -66,7 +75,7 @@ npm run build
 
 Then add to your MCP config:
 
-```json
+```JSON
 {
   "mcpServers": {
     "ui-architect": {
@@ -79,13 +88,13 @@ Then add to your MCP config:
 
 ### Development Mode
 
-```bash
+```Shell
 npm run dev
 ```
 
 This uses `tsx` to run the TypeScript source directly without a build step.
 
----
+***
 
 ## Tools
 
@@ -93,16 +102,16 @@ UI Architect exposes **8 MCP tools** that follow a complete web design agency pi
 
 ### The 8-Step Pipeline
 
-1. **analyze_project** — Scope and requirements analysis
-2. **plan_architecture** — System design and component mapping
-3. **design_theme** — Color system, typography, spacing
-4. **select_components** — Choose and adapt UI components
-5. **generate_background** — Create background patterns
-6. **scaffold_project** — Generate project directory structure
-7. **generate_full_page** — Produce complete page code
-8. **review_output** — QA and anti-pattern detection
+1. **analyze\_project** — Scope and requirements analysis
+2. **plan\_architecture** — System design and component mapping
+3. **design\_theme** — Color system, typography, spacing
+4. **select\_components** — Choose and adapt UI components
+5. **generate\_background** — Create background patterns
+6. **scaffold\_project** — Generate project directory structure
+7. **generate\_full\_page** — Produce complete page code
+8. **review\_output** — QA and anti-pattern detection
 
----
+***
 
 ### 1. `analyze_project` (Phase 1: Project Manager Analysis)
 
@@ -110,19 +119,19 @@ UI Architect exposes **8 MCP tools** that follow a complete web design agency pi
 
 **Input:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `description` | string | Yes | User's request. e.g. "A fintech landing page for millennials" |
-| `audience` | string | No | Target audience. e.g. "B2C millennials", "enterprise B2B" |
-| `industry` | string | No | Business type. If omitted, inferred from description. |
+| Parameter     | Type   | Required | Description                                                   |
+| ------------- | ------ | -------- | ------------------------------------------------------------- |
+| `description` | string | Yes      | User's request. e.g. "A fintech landing page for millennials" |
+| `audience`    | string | No       | Target audience. e.g. "B2C millennials", "enterprise B2B"     |
+| `industry`    | string | No       | Business type. If omitted, inferred from description.         |
 
 **What it returns:**
 
-- Project scope document (pages, sections, tone, complexity)
-- Clarifying questions (if the request is ambiguous)
-- Risk assessment (performance, compatibility, scope creep)
-- Recommended framework and styling approach
-- Estimated timeline and component count
+* Project scope document (pages, sections, tone, complexity)
+* Clarifying questions (if the request is ambiguous)
+* Risk assessment (performance, compatibility, scope creep)
+* Recommended framework and styling approach
+* Estimated timeline and component count
 
 **Example:**
 
@@ -147,7 +156,7 @@ Output:
   }
 ```
 
----
+***
 
 ### 2. `plan_architecture` (Phase 2: System Analyst Architecture)
 
@@ -155,19 +164,19 @@ Output:
 
 **Input:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `scope` | object | Yes | Project scope from `analyze_project` |
-| `framework` | string | No | Target framework. Default: "html" |
-| `stylingApproach` | string | No | "pure-css", "css-modules", "styled-components", "scoped-styles". Default: auto-detect. |
+| Parameter         | Type   | Required | Description                                                                            |
+| ----------------- | ------ | -------- | -------------------------------------------------------------------------------------- |
+| `scope`           | object | Yes      | Project scope from `analyze_project`                                                   |
+| `framework`       | string | No       | Target framework. Default: "html"                                                      |
+| `stylingApproach` | string | No       | "pure-css", "css-modules", "styled-components", "scoped-styles". Default: auto-detect. |
 
 **What it returns:**
 
-- Technology stack decision (framework, styling, state management, build tool)
-- Complete component architecture map (hierarchical structure)
-- Data flow and interactivity plan (scroll animations, navigation, form flows)
-- Directory structure template (ready for scaffolding)
-- File listing with dependencies
+* Technology stack decision (framework, styling, state management, build tool)
+* Complete component architecture map (hierarchical structure)
+* Data flow and interactivity plan (scroll animations, navigation, form flows)
+* Directory structure template (ready for scaffolding)
+* File listing with dependencies
 
 **Example:**
 
@@ -192,7 +201,7 @@ Output:
   }
 ```
 
----
+***
 
 ### 3. `design_theme` (Phase 3: Senior UI/UX Designer)
 
@@ -200,38 +209,38 @@ Output:
 
 **Run this first.** It produces the color palette, typography, spacing, shadows, border radius, and transitions that all other tools depend on.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `industry` | string | Yes | Business type. e.g. `"fintech"`, `"healthcare"`, `"saas"`, `"restaurant"`, `"law firm"`, `"gaming studio"`, `"luxury fashion"` |
-| `tone` | string | Yes | Design personality. e.g. `"modern"`, `"corporate"`, `"playful"`, `"minimal"`, `"luxury"`, `"bold"`, `"elegant"` |
-| `themePreference` | `"light"` \| `"dark"` \| `"auto"` | No | Force a theme or let the engine decide based on industry. Default: `"auto"` |
-| `brandColor` | string | No | Hex color to use as primary. e.g. `"#1B365D"`. If omitted, the engine picks the best color for your industry. |
+| Parameter         | Type                              | Required | Description                                                                                                                    |
+| ----------------- | --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `industry`        | string                            | Yes      | Business type. e.g. `"fintech"`, `"healthcare"`, `"saas"`, `"restaurant"`, `"law firm"`, `"gaming studio"`, `"luxury fashion"` |
+| `tone`            | string                            | Yes      | Design personality. e.g. `"modern"`, `"corporate"`, `"playful"`, `"minimal"`, `"luxury"`, `"bold"`, `"elegant"`                |
+| `themePreference` | `"light"` \| `"dark"` \| `"auto"` | No       | Force a theme or let the engine decide based on industry. Default: `"auto"`                                                    |
+| `brandColor`      | string                            | No       | Hex color to use as primary. e.g. `"#1B365D"`. If omitted, the engine picks the best color for your industry.                  |
 
 **What it returns:**
 
-- Complete CSS custom properties block (paste into your stylesheet)
-- Google Fonts `<link>` tag
-- Color palette with primary, secondary, accent, 7-step neutral scale, and semantic colors
-- Typography scale (Display through Caption), font pairing, weights, line heights
-- 8px grid spacing system
-- Shadow, radius, and transition tokens
-- Human-readable design summary
+* Complete CSS custom properties block (paste into your stylesheet)
+* Google Fonts `<link>` tag
+* Color palette with primary, secondary, accent, 7-step neutral scale, and semantic colors
+* Typography scale (Display through Caption), font pairing, weights, line heights
+* 8px grid spacing system
+* Shadow, radius, and transition tokens
+* Human-readable design summary
 
 **How the theme engine decides:**
 
-| Industry | Theme | Primary | Font |
-|---|---|---|---|
-| Fintech | Light | Navy `#0A2540` | Sora + Inter |
-| Gaming | Dark | Green `#059669` | Space Grotesk + DM Sans |
-| Healthcare | Light | Cyan `#06B6D4` | DM Sans |
-| Luxury | Dark | Charcoal `#1C1917` | Playfair Display + Source Sans 3 |
-| Restaurant | Light | Brown `#92400E` | Playfair Display + Source Sans 3 |
-| SaaS | Light | Blue `#1D4ED8` | Inter |
-| Law Firm | Light | Charcoal `#1C1917` | Playfair Display + Source Sans 3 |
+| Industry   | Theme | Primary            | Font                             |
+| ---------- | ----- | ------------------ | -------------------------------- |
+| Fintech    | Light | Navy `#0A2540`     | Sora + Inter                     |
+| Gaming     | Dark  | Green `#059669`    | Space Grotesk + DM Sans          |
+| Healthcare | Light | Cyan `#06B6D4`     | DM Sans                          |
+| Luxury     | Dark  | Charcoal `#1C1917` | Playfair Display + Source Sans 3 |
+| Restaurant | Light | Brown `#92400E`    | Playfair Display + Source Sans 3 |
+| SaaS       | Light | Blue `#1D4ED8`     | Inter                            |
+| Law Firm   | Light | Charcoal `#1C1917` | Playfair Display + Source Sans 3 |
 
 **Sample output (CSS variables):**
 
-```css
+```CSS
 :root {
   --color-primary: #0A2540;
   --color-primary-light: #2280dd;
@@ -251,99 +260,99 @@ Output:
 }
 ```
 
----
+***
 
 ### 4. `select_components` (Phase 3.5: Component Selection)
 
 > Select and adapt animated UI components for your framework.
 
-**Run this after `design_theme`.** It picks the best component for each category from the built-in library, adapts it to your framework, and locks it in the Design Token Registry.
+**Run this after** **`design_theme`.** It picks the best component for each category from the built-in library, adapts it to your framework, and locks it in the Design Token Registry.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `componentTypes` | string[] | Yes | Categories to select. See below. |
-| `framework` | string | Yes | Target: `"html"`, `"react"`, `"nextjs"`, `"vue"`, `"nuxt"`, `"angular"`, `"svelte"`, `"astro"` |
-| `animationPreference` | `"low"` \| `"medium"` \| `"high"` | No | Animation richness. Default: `"high"` |
-| `style` | `"flat"` \| `"neumorphic"` \| `"glassmorphic"` \| `"gradient"` \| `"animated"` | No | Component visual style. If omitted, auto-resolved from your industry + tone. |
+| Parameter             | Type                                                                           | Required | Description                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `componentTypes`      | string\[]                                                                      | Yes      | Categories to select. See below.                                                               |
+| `framework`           | string                                                                         | Yes      | Target: `"html"`, `"react"`, `"nextjs"`, `"vue"`, `"nuxt"`, `"angular"`, `"svelte"`, `"astro"` |
+| `animationPreference` | `"low"` \| `"medium"` \| `"high"`                                              | No       | Animation richness. Default: `"high"`                                                          |
+| `style`               | `"flat"` \| `"neumorphic"` \| `"glassmorphic"` \| `"gradient"` \| `"animated"` | No       | Component visual style. If omitted, auto-resolved from your industry + tone.                   |
 
 **Component visual styles (5 variants per category):**
 
-| Style | Best For | Description |
-|---|---|---|
-| `flat` | Corporate, Finance, Healthcare, Legal | Clean, minimal borders, subtle shadows |
-| `neumorphic` | Real Estate, Food, Elegant brands | Soft raised/inset shadows, light backgrounds |
-| `glassmorphic` | Luxury, Creative, Startup | Backdrop blur, transparency, frosted glass |
-| `gradient` | Gaming, Creative, Startup, Bold brands | Gradient fills, bold colors, high energy |
-| `animated` | Technology, E-commerce, Modern | Heavy CSS animation focus, rich interactivity |
+| Style          | Best For                               | Description                                   |
+| -------------- | -------------------------------------- | --------------------------------------------- |
+| `flat`         | Corporate, Finance, Healthcare, Legal  | Clean, minimal borders, subtle shadows        |
+| `neumorphic`   | Real Estate, Food, Elegant brands      | Soft raised/inset shadows, light backgrounds  |
+| `glassmorphic` | Luxury, Creative, Startup              | Backdrop blur, transparency, frosted glass    |
+| `gradient`     | Gaming, Creative, Startup, Bold brands | Gradient fills, bold colors, high energy      |
+| `animated`     | Technology, E-commerce, Modern         | Heavy CSS animation focus, rich interactivity |
 
 Style is automatically resolved from your industry and tone if not specified:
 
-| Industry | Auto-Selected Style |
-|---|---|
-| Corporate, Finance, Legal, Healthcare | `flat` |
-| Real Estate, Food | `neumorphic` |
-| Luxury | `glassmorphic` |
-| Technology, E-commerce | `animated` |
-| Gaming, Startup, Creative | `gradient` |
+| Industry                              | Auto-Selected Style |
+| ------------------------------------- | ------------------- |
+| Corporate, Finance, Legal, Healthcare | `flat`              |
+| Real Estate, Food                     | `neumorphic`        |
+| Luxury                                | `glassmorphic`      |
+| Technology, E-commerce                | `animated`          |
+| Gaming, Startup, Creative             | `gradient`          |
 
 **Component categories (13 categories × up to 5 styles = 61 components):**
 
-| Category | ID | What You Get |
-|---|---|---|
-| Primary Button | `button-primary` | Filled button with shine/ripple hover, translateY lift, scale on active |
-| Secondary Button | `button-secondary` | Outlined button with border fill transition, hover glow |
-| Card | `card` | Shadow lift, border-color transition, accent top-border on hover |
-| Text Input | `input` | Floating label, animated focus ring, border color transitions |
-| Checkbox | `checkbox` | Bouncy checkmark with spring easing |
-| Toggle Switch | `toggle` | Smooth sliding knob, track color transition |
-| Radio Button | `radio` | Inner dot scale-in with spring easing |
-| Tooltip | `tooltip` | Fade + slide-up entrance, delayed appearance |
-| Modal | `modal` | Scale + fade entrance, backdrop animation |
-| Loader | `loader` | Pulsing concentric rings |
-| Badge | `badge` | Pill shape with semantic color variants (success/warning/error/info) |
-| Dropdown | `dropdown` | Slide-down + fade, item hover highlights |
-| Navigation | `navigation` | Animated underline that grows on hover |
+| Category         | ID                 | What You Get                                                            |
+| ---------------- | ------------------ | ----------------------------------------------------------------------- |
+| Primary Button   | `button-primary`   | Filled button with shine/ripple hover, translateY lift, scale on active |
+| Secondary Button | `button-secondary` | Outlined button with border fill transition, hover glow                 |
+| Card             | `card`             | Shadow lift, border-color transition, accent top-border on hover        |
+| Text Input       | `input`            | Floating label, animated focus ring, border color transitions           |
+| Checkbox         | `checkbox`         | Bouncy checkmark with spring easing                                     |
+| Toggle Switch    | `toggle`           | Smooth sliding knob, track color transition                             |
+| Radio Button     | `radio`            | Inner dot scale-in with spring easing                                   |
+| Tooltip          | `tooltip`          | Fade + slide-up entrance, delayed appearance                            |
+| Modal            | `modal`            | Scale + fade entrance, backdrop animation                               |
+| Loader           | `loader`           | Pulsing concentric rings                                                |
+| Badge            | `badge`            | Pill shape with semantic color variants (success/warning/error/info)    |
+| Dropdown         | `dropdown`         | Slide-down + fade, item hover highlights                                |
+| Navigation       | `navigation`       | Animated underline that grows on hover                                  |
 
 **Presets (shorthand for common sets):**
 
-| Preset | Components Included | Count |
-|---|---|---|
-| `"all"` | Every component | 13 |
-| `"landing"` | button-primary, button-secondary, card, navigation, badge | 5 |
-| `"form"` | input, checkbox, toggle, radio, button-primary, button-secondary | 6 |
-| `"dashboard"` | button-primary, button-secondary, card, input, toggle, badge, dropdown, navigation, modal, loader | 10 |
-| `"minimal"` | button-primary, card, input, navigation | 4 |
+| Preset        | Components Included                                                                               | Count |
+| ------------- | ------------------------------------------------------------------------------------------------- | ----- |
+| `"all"`       | Every component                                                                                   | 13    |
+| `"landing"`   | button-primary, button-secondary, card, navigation, badge                                         | 5     |
+| `"form"`      | input, checkbox, toggle, radio, button-primary, button-secondary                                  | 6     |
+| `"dashboard"` | button-primary, button-secondary, card, input, toggle, badge, dropdown, navigation, modal, loader | 10    |
+| `"minimal"`   | button-primary, card, input, navigation                                                           | 4     |
 
 **What it returns:**
 
-- Production-ready code for each component (HTML/CSS, JSX, Vue SFC, Angular, or Svelte)
-- Separate CSS with zero hardcoded colors — everything uses your design tokens
-- A locked Design Token Registry (guarantees consistency)
-- Accessibility notes per component
+* Production-ready code for each component (HTML/CSS, JSX, Vue SFC, Angular, or Svelte)
+* Separate CSS with zero hardcoded colors — everything uses your design tokens
+* A locked Design Token Registry (guarantees consistency)
+* Accessibility notes per component
 
----
+***
 
 ### 5. `generate_background` (Phase 4: Background & Pattern Engine)
 
 > Generate subtle CSS background patterns matched to your industry.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `industry` | string | Yes | Business type for automatic pattern selection |
-| `theme` | `"light"` \| `"dark"` \| `"auto"` | Yes | Theme mode |
-| `style` | string | No | Override: `"geometric"`, `"gradient"`, `"noise"`, `"organic"`, `"blob"` |
+| Parameter  | Type                              | Required | Description                                                             |
+| ---------- | --------------------------------- | -------- | ----------------------------------------------------------------------- |
+| `industry` | string                            | Yes      | Business type for automatic pattern selection                           |
+| `theme`    | `"light"` \| `"dark"` \| `"auto"` | Yes      | Theme mode                                                              |
+| `style`    | string                            | No       | Override: `"geometric"`, `"gradient"`, `"noise"`, `"organic"`, `"blob"` |
 
 **Pattern types:**
 
-| Style | Best For | What It Looks Like |
-|---|---|---|
-| `geometric` | Tech, SaaS, Corporate | Dot grids, line grids, diagonal stripes |
-| `gradient` | Startup, Creative, Modern | Soft radial gradient meshes using your palette |
-| `noise` | Luxury, Editorial, Artisan | SVG fractal noise texture overlay |
-| `organic` | Health, Education, Nature | Wave clip-paths for section dividers |
-| `blob` | Creative, Playful, SaaS | Animated morphing blob shapes |
+| Style       | Best For                   | What It Looks Like                             |
+| ----------- | -------------------------- | ---------------------------------------------- |
+| `geometric` | Tech, SaaS, Corporate      | Dot grids, line grids, diagonal stripes        |
+| `gradient`  | Startup, Creative, Modern  | Soft radial gradient meshes using your palette |
+| `noise`     | Luxury, Editorial, Artisan | SVG fractal noise texture overlay              |
+| `organic`   | Health, Education, Nature  | Wave clip-paths for section dividers           |
+| `blob`      | Creative, Playful, SaaS    | Animated morphing blob shapes                  |
 
----
+***
 
 ### 6. `scaffold_project` (Phase 5: Project Scaffolding)
 
@@ -351,22 +360,22 @@ Style is automatically resolved from your industry and tone if not specified:
 
 **Input:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `framework` | string | Yes | Target: `"html"`, `"react"`, `"nextjs"`, `"vue"`, `"nuxt"`, `"angular"`, `"svelte"`, `"astro"` |
-| `designTokens` | object | Yes | Output from `design_theme` |
-| `sections` | string[] | Yes | Page sections to scaffold. e.g. `["hero", "features", "pricing", "footer"]` |
-| `includeTests` | boolean | No | Generate test files. Default: false |
+| Parameter      | Type      | Required | Description                                                                                    |
+| -------------- | --------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `framework`    | string    | Yes      | Target: `"html"`, `"react"`, `"nextjs"`, `"vue"`, `"nuxt"`, `"angular"`, `"svelte"`, `"astro"` |
+| `designTokens` | object    | Yes      | Output from `design_theme`                                                                     |
+| `sections`     | string\[] | Yes      | Page sections to scaffold. e.g. `["hero", "features", "pricing", "footer"]`                    |
+| `includeTests` | boolean   | No       | Generate test files. Default: false                                                            |
 
 **What it returns:**
 
-- Complete directory tree with all folders
-- CSS variables file (from design tokens)
-- CSS reset and base styles
-- HTML/component templates for each section
-- Navigation and layout scaffolding
-- Animation utility classes
-- Ready to run — just fill in content
+* Complete directory tree with all folders
+* CSS variables file (from design tokens)
+* CSS reset and base styles
+* HTML/component templates for each section
+* Navigation and layout scaffolding
+* Animation utility classes
+* Ready to run — just fill in content
 
 **Example output structure for React:**
 
@@ -390,7 +399,7 @@ src/
     └── page.tsx
 ```
 
----
+***
 
 ### 7. `generate_full_page` (Phase 6: Code Generation)
 
@@ -398,38 +407,38 @@ src/
 
 **Input:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `architecture` | object | Yes | Output from `plan_architecture` |
-| `designSystem` | object | Yes | Output from `design_theme` + `select_components` |
-| `framework` | string | Yes | Target framework |
-| `sections` | object[] | No | Section content. Each: `{ name, title, content, imageUrl }` |
-| `includeAnimations` | boolean | No | Include scroll entrance animations. Default: true |
-| `darkModeSupport` | boolean | No | Generate dark theme variant. Default: false |
+| Parameter           | Type      | Required | Description                                                 |
+| ------------------- | --------- | -------- | ----------------------------------------------------------- |
+| `architecture`      | object    | Yes      | Output from `plan_architecture`                             |
+| `designSystem`      | object    | Yes      | Output from `design_theme` + `select_components`            |
+| `framework`         | string    | Yes      | Target framework                                            |
+| `sections`          | object\[] | No       | Section content. Each: `{ name, title, content, imageUrl }` |
+| `includeAnimations` | boolean   | No       | Include scroll entrance animations. Default: true           |
+| `darkModeSupport`   | boolean   | No       | Generate dark theme variant. Default: false                 |
 
 **What it returns:**
 
-- **Complete page code** — ready to copy-paste and run
-- Semantic HTML (or JSX/Vue/Angular templates)
-- All components integrated
-- All animations (hover, focus, scroll-triggered)
-- Responsive design at all breakpoints
-- Accessibility attributes (ARIA, keyboard nav, contrast validated)
-- Zero hardcoded colors — all CSS variables
-- Zero console errors
+* **Complete page code** — ready to copy-paste and run
+* Semantic HTML (or JSX/Vue/Angular templates)
+* All components integrated
+* All animations (hover, focus, scroll-triggered)
+* Responsive design at all breakpoints
+* Accessibility attributes (ARIA, keyboard nav, contrast validated)
+* Zero hardcoded colors — all CSS variables
+* Zero console errors
 
 **Generated code includes:**
 
-- Header/navigation with animated underlines
-- Hero section with entrance animations
-- Feature cards with staggered reveals
-- Pricing tables with hover effects
-- Testimonial carousels
-- Footer with organized links
-- Mobile menu hamburger with animation
-- Fully functional form validation (if sections include forms)
+* Header/navigation with animated underlines
+* Hero section with entrance animations
+* Feature cards with staggered reveals
+* Pricing tables with hover effects
+* Testimonial carousels
+* Footer with organized links
+* Mobile menu hamburger with animation
+* Fully functional form validation (if sections include forms)
 
----
+***
 
 ### 8. `review_output` (Phase 7: QA Review)
 
@@ -437,33 +446,33 @@ src/
 
 **Input:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `code` | string | Yes | Generated code to review |
-| `scope` | object | Yes | Original project scope from `analyze_project` |
-| `designTokens` | object | No | Design tokens for validation |
+| Parameter      | Type   | Required | Description                                   |
+| -------------- | ------ | -------- | --------------------------------------------- |
+| `code`         | string | Yes      | Generated code to review                      |
+| `scope`        | object | Yes      | Original project scope from `analyze_project` |
+| `designTokens` | object | No       | Design tokens for validation                  |
 
 **What it returns:**
 
-- **QA Report** with pass/fail on 30+ checks
-- Visual review checklist (design, hierarchy, animations)
-- Technical review checklist (accessibility, performance, HTML validity)
-- Business alignment check
-- Anti-pattern detection (purple-blue gradients, AI tells, inconsistent components)
-- Specific remediation suggestions
-- Overall quality score (1-10)
-- Ready-to-fix action items
+* **QA Report** with pass/fail on 30+ checks
+* Visual review checklist (design, hierarchy, animations)
+* Technical review checklist (accessibility, performance, HTML validity)
+* Business alignment check
+* Anti-pattern detection (purple-blue gradients, AI tells, inconsistent components)
+* Specific remediation suggestions
+* Overall quality score (1-10)
+* Ready-to-fix action items
 
 **Checks include:**
 
-| Category | Examples |
-|---|---|
-| **Design** | Colors cohesive? Hierarchy clear? Animations smooth? Feels AI-generated? |
-| **Component Consistency** | All buttons match? Cards all same style? Colors use CSS variables? |
-| **Accessibility** | WCAG AA contrast? Keyboard nav works? Alt text present? Focus rings visible? |
-| **Performance** | Images optimized? No layout thrashing? Animations GPU-accelerated? |
-| **HTML Quality** | Valid semantic HTML? No unused classes? Proper nesting? |
-| **Business Alignment** | Does it match the business context? CTA clear? Information hierarchy logical? |
+| Category                  | Examples                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| **Design**                | Colors cohesive? Hierarchy clear? Animations smooth? Feels AI-generated?      |
+| **Component Consistency** | All buttons match? Cards all same style? Colors use CSS variables?            |
+| **Accessibility**         | WCAG AA contrast? Keyboard nav works? Alt text present? Focus rings visible?  |
+| **Performance**           | Images optimized? No layout thrashing? Animations GPU-accelerated?            |
+| **HTML Quality**          | Valid semantic HTML? No unused classes? Proper nesting?                       |
+| **Business Alignment**    | Does it match the business context? CTA clear? Information hierarchy logical? |
 
 **Example report:**
 
@@ -486,7 +495,7 @@ Recommendations:
 3. Verify pricing section contrast ratio on hover states
 ```
 
----
+***
 
 ## Usage Examples
 
@@ -551,7 +560,7 @@ Result: 3 production Angular components with separate HTML + SCSS,
 hover lift animations, focus rings, zero hardcoded colors.
 ```
 
----
+***
 
 ## Architecture
 
@@ -583,33 +592,37 @@ ui-architect-mcp/
 ### How the engines work
 
 **Color Intelligence Engine** (`color-engine.ts`)
-- 15 industry color profiles with curated primary/secondary/accent palettes
-- Industry-aware theme selection (gaming → dark, healthcare → light, etc.)
-- Tinted neutral scale generation (warm primary → warm grays)
-- WCAG AA contrast validation on all text/background combos
-- Seeded randomness for deterministic palette generation
-- Never produces the purple-blue AI gradient
+
+* 15 industry color profiles with curated primary/secondary/accent palettes
+* Industry-aware theme selection (gaming → dark, healthcare → light, etc.)
+* Tinted neutral scale generation (warm primary → warm grays)
+* WCAG AA contrast validation on all text/background combos
+* Seeded randomness for deterministic palette generation
+* Never produces the purple-blue AI gradient
 
 **Typography Engine** (`typography-engine.ts`)
-- 10 Google Font pairings scored by industry + tone match
-- Modular type scale (1.25 ratio, Display through Caption)
-- Tone-aware border radius (corporate → sharp 2-4px, playful → rounded 10-14px)
-- Complete CSS variable generation for every subsystem
+
+* 10 Google Font pairings scored by industry + tone match
+* Modular type scale (1.25 ratio, Display through Caption)
+* Tone-aware border radius (corporate → sharp 2-4px, playful → rounded 10-14px)
+* Complete CSS variable generation for every subsystem
 
 **Component Library** (`component-library.ts` + `components-part2.ts` + `components-part3.ts`)
-- 61 curated components across 13 categories and 5 visual styles
-- Styles: flat, neumorphic, glassmorphic, gradient, animated
-- CSS keyframes, spring easings, hover transforms, focus rings across all variants
-- Zero hardcoded colors — all use CSS custom property references
-- ARIA attributes baked into HTML templates
+
+* 61 curated components across 13 categories and 5 visual styles
+* Styles: flat, neumorphic, glassmorphic, gradient, animated
+* CSS keyframes, spring easings, hover transforms, focus rings across all variants
+* Zero hardcoded colors — all use CSS custom property references
+* ARIA attributes baked into HTML templates
 
 **Component Adapter** (`component-adapter.ts`)
-- Converts raw HTML/CSS into React JSX, Vue SFC, Angular components, Svelte, or vanilla HTML
-- Builds the Design Token Registry (locks one style per category)
-- Auto-resolves component style from industry + tone (e.g., corporate → flat, gaming → gradient)
-- Generates accessibility audit notes per component
 
----
+* Converts raw HTML/CSS into React JSX, Vue SFC, Angular components, Svelte, or vanilla HTML
+* Builds the Design Token Registry (locks one style per category)
+* Auto-resolves component style from industry + tone (e.g., corporate → flat, gaming → gradient)
+* Generates accessibility audit notes per component
+
+***
 
 ## Design Philosophy
 
@@ -617,110 +630,116 @@ These are the core rules baked into every output:
 
 ### Never Looks AI-Generated
 
-| AI Tell | How We Avoid It |
-|---|---|
-| Purple-blue gradients | 15 industry-specific palettes, purple-blue is blocked |
-| Symmetric 3x2 card grids | Design Token Registry enforces hierarchy, not repetition |
-| Dark theme for everything | Business-context algorithm (fintech=light, gaming=dark) |
-| Static, lifeless pages | Every component ships with hover, focus, entrance, ambient animations |
-| Inconsistent component styles | Design Token Registry locks ONE style per category |
-| Hardcoded colors | Zero hex values in components — everything is `var(--color-*)` |
+| AI Tell                       | How We Avoid It                                                       |
+| ----------------------------- | --------------------------------------------------------------------- |
+| Purple-blue gradients         | 15 industry-specific palettes, purple-blue is blocked                 |
+| Symmetric 3x2 card grids      | Design Token Registry enforces hierarchy, not repetition              |
+| Dark theme for everything     | Business-context algorithm (fintech=light, gaming=dark)               |
+| Static, lifeless pages        | Every component ships with hover, focus, entrance, ambient animations |
+| Inconsistent component styles | Design Token Registry locks ONE style per category                    |
+| Hardcoded colors              | Zero hex values in components — everything is `var(--color-*)`        |
 
 ### Design Token Registry
 
 The registry guarantees visual consistency:
 
-- **Buttons:** Maximum 2 variants (primary filled + secondary outlined)
-- **Cards:** 1 style, vary only size/content
-- **Inputs:** 1 style for all field types
-- **Every other component:** 1 locked style per category
+* **Buttons:** Maximum 2 variants (primary filled + secondary outlined)
+* **Cards:** 1 style, vary only size/content
+* **Inputs:** 1 style for all field types
+* **Every other component:** 1 locked style per category
 
 This mirrors how real design systems work (Material UI, Chakra, Ant Design).
 
 ### High Animation by Default
 
 Every component includes:
-- Hover transforms (translateY, scale, shadow elevation)
-- Focus rings with primary color glow
-- Active states (press-down scale)
-- Entrance animations for scroll-triggered reveals
-- Ambient effects (floating, pulsing, gradient shifting)
-- Spring easings (`cubic-bezier(0.34, 1.56, 0.64, 1)`) for playful interactions
-- Expo curves (`cubic-bezier(0.16, 1, 0.3, 1)`) for smooth entrances
+
+* Hover transforms (translateY, scale, shadow elevation)
+* Focus rings with primary color glow
+* Active states (press-down scale)
+* Entrance animations for scroll-triggered reveals
+* Ambient effects (floating, pulsing, gradient shifting)
+* Spring easings (`cubic-bezier(0.34, 1.56, 0.64, 1)`) for playful interactions
+* Expo curves (`cubic-bezier(0.16, 1, 0.3, 1)`) for smooth entrances
 
 ### WCAG AA Accessible
 
-- All text/background combos pass 4.5:1 contrast ratio
-- No pure black `#000` or pure white `#FFF` — neutrals are tinted toward the primary hue
-- ARIA attributes in every component template
-- Keyboard-navigable interactive elements
-- Focus indicators on all focusable elements
+* All text/background combos pass 4.5:1 contrast ratio
+* No pure black `#000` or pure white `#FFF` — neutrals are tinted toward the primary hue
+* ARIA attributes in every component template
+* Keyboard-navigable interactive elements
+* Focus indicators on all focusable elements
 
----
+***
 
 ## Supported Frameworks
 
-| Framework | Output Format | Styling |
-|---|---|---|
-| HTML/CSS/JS | Semantic HTML + separate CSS | Pure CSS with custom properties |
-| React | Functional components + CSS file | CSS Modules compatible |
-| Next.js | Same as React (compatible with App Router) | CSS Modules compatible |
-| Vue | Single File Components `<script setup>` | `<style scoped>` |
-| Nuxt | Same as Vue | `<style scoped>` |
-| Angular | Component class + template + stylesheet | Component CSS |
-| Svelte | `.svelte` SFC with scoped styles | Scoped `<style>` |
-| Astro | HTML output (same as vanilla) | Pure CSS |
+| Framework   | Output Format                              | Styling                         |
+| ----------- | ------------------------------------------ | ------------------------------- |
+| HTML/CSS/JS | Semantic HTML + separate CSS               | Pure CSS with custom properties |
+| React       | Functional components + CSS file           | CSS Modules compatible          |
+| Next.js     | Same as React (compatible with App Router) | CSS Modules compatible          |
+| Vue         | Single File Components `<script setup>`    | `<style scoped>`                |
+| Nuxt        | Same as Vue                                | `<style scoped>`                |
+| Angular     | Component class + template + stylesheet    | Component CSS                   |
+| Svelte      | `.svelte` SFC with scoped styles           | Scoped `<style>`                |
+| Astro       | HTML output (same as vanilla)              | Pure CSS                        |
 
----
+***
 
 ## Supported Industries
 
 The Color Intelligence Engine has curated profiles for:
 
-| Industry | Example Inputs |
-|---|---|
-| Finance / Banking | `"fintech"`, `"banking"`, `"insurance"` |
-| Healthcare / Medical | `"healthcare"`, `"medical"`, `"pharma"` |
-| Technology / SaaS | `"saas"`, `"tech"`, `"software"`, `"ai"`, `"devtools"` |
-| E-commerce / Retail | `"ecommerce"`, `"shop"`, `"store"`, `"marketplace"` |
-| Education | `"education"`, `"edtech"`, `"school"`, `"university"` |
-| Food / Restaurant | `"restaurant"`, `"cafe"`, `"bakery"`, `"food"` |
-| Real Estate | `"realestate"`, `"property"`, `"housing"` |
-| Legal | `"legal"`, `"law"`, `"attorney"` |
-| Creative / Design | `"creative"`, `"agency"`, `"design"`, `"photography"`, `"portfolio"` |
-| Environmental | `"environmental"`, `"eco"`, `"sustainability"`, `"climate"` |
-| Gaming / Entertainment | `"gaming"`, `"esports"`, `"entertainment"` |
-| Nonprofit / NGO | `"nonprofit"`, `"ngo"`, `"charity"`, `"foundation"` |
-| Luxury / Fashion | `"luxury"`, `"fashion"`, `"jewelry"`, `"premium"` |
-| Startup | `"startup"` |
-| Corporate / B2B | `"corporate"`, `"enterprise"`, `"b2b"`, `"consulting"` |
+| Industry               | Example Inputs                                                       |
+| ---------------------- | -------------------------------------------------------------------- |
+| Finance / Banking      | `"fintech"`, `"banking"`, `"insurance"`                              |
+| Healthcare / Medical   | `"healthcare"`, `"medical"`, `"pharma"`                              |
+| Technology / SaaS      | `"saas"`, `"tech"`, `"software"`, `"ai"`, `"devtools"`               |
+| E-commerce / Retail    | `"ecommerce"`, `"shop"`, `"store"`, `"marketplace"`                  |
+| Education              | `"education"`, `"edtech"`, `"school"`, `"university"`                |
+| Food / Restaurant      | `"restaurant"`, `"cafe"`, `"bakery"`, `"food"`                       |
+| Real Estate            | `"realestate"`, `"property"`, `"housing"`                            |
+| Legal                  | `"legal"`, `"law"`, `"attorney"`                                     |
+| Creative / Design      | `"creative"`, `"agency"`, `"design"`, `"photography"`, `"portfolio"` |
+| Environmental          | `"environmental"`, `"eco"`, `"sustainability"`, `"climate"`          |
+| Gaming / Entertainment | `"gaming"`, `"esports"`, `"entertainment"`                           |
+| Nonprofit / NGO        | `"nonprofit"`, `"ngo"`, `"charity"`, `"foundation"`                  |
+| Luxury / Fashion       | `"luxury"`, `"fashion"`, `"jewelry"`, `"premium"`                    |
+| Startup                | `"startup"`                                                          |
+| Corporate / B2B        | `"corporate"`, `"enterprise"`, `"b2b"`, `"consulting"`               |
 
 Any unrecognized input defaults to Technology with a Modern tone.
 
----
+***
 
 ## Roadmap
 
 **Core Pipeline (Complete):**
-- [x] `analyze_project` — Phase 1 requirement analysis
-- [x] `plan_architecture` — Phase 2 system design
-- [x] `design_theme` — Phase 3 design system generation
-- [x] `select_components` — Phase 3.5 component selection
-- [x] `generate_background` — Phase 4 pattern generation
-- [x] `scaffold_project` — Phase 5 project scaffolding
-- [x] `generate_full_page` — Phase 6 code generation
-- [x] `review_output` — Phase 7 QA review
+
+* [x] `analyze_project` — Phase 1 requirement analysis
+* [x] `plan_architecture` — Phase 2 system design
+* [x] `design_theme` — Phase 3 design system generation
+* [x] `select_components` — Phase 3.5 component selection
+* [x] `generate_background` — Phase 4 pattern generation
+* [x] `scaffold_project` — Phase 5 project scaffolding
+* [x] `generate_full_page` — Phase 6 code generation
+* [x] `review_output` — Phase 7 QA review
 
 **Future Enhancements:**
-- [ ] Live fetch from UIverse.io (hybrid: built-in library + live updates)
-- [ ] `generate_section` tool — individual section code generation
-- [ ] Dark mode toggle variant generation
-- [ ] Component theming preview (HTML output you can open in browser)
-- [ ] Figma export and design token sync
-- [ ] Storybook integration for component documentation
-- [ ] Lighthouse performance scoring in review_output
 
----
+* [ ] Live fetch from UIverse.io (hybrid: built-in library + live updates)
+* [ ] `generate_section` tool — individual section code generation
+* [ ] Dark mode toggle variant generation
+* [ ] Component theming preview (HTML output you can open in browser)
+* [ ] Figma export and design token sync
+* [ ] Storybook integration for component documentation
+* [ ] Lighthouse performance scoring in review\_output
+
+- [ ] Create image support from Royalty free images
+- [ ] SEO agent to check SEO compatibility of the platform
+
+***
 
 ## Contributing
 
@@ -748,18 +767,18 @@ Contributions are welcome. The project is structured so you can add new componen
 2. Add the framework to the `Framework` type in `src/engine/types.ts`
 3. Handle it in the `adaptComponent` switch statement
 
----
+***
 
 ## License
 
 MIT — use it, fork it, ship it.
 
----
+***
 
----
+<div align="center">
 
-**[FODUU](https://www.foduu.com)** — Web Design & Development Company, India
-
-Open-sourced by the **FODUU** team | Developed by **Nehul**
+Open-sourced by the **[FODUU](https://www.foduu.com)** with ❤️ & 🕊️
 
 Inspired by [UIverse.io](https://uiverse.io) and the open-source design community
+
+</div>
