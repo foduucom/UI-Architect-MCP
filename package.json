@@ -1,0 +1,51 @@
+{
+  "name": "ui-architect-mcp",
+  "version": "0.1.0",
+  "description": "The ultimate MCP server for generating production-ready, agency-quality UI — across any framework, no CSS framework lock-in.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "ui-architect-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "ui",
+    "design",
+    "components",
+    "css",
+    "html",
+    "react",
+    "vue",
+    "angular",
+    "svelte",
+    "nextjs",
+    "uiverse",
+    "design-system",
+    "claude",
+    "model-context-protocol"
+  ],
+  "author": "Nehul",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

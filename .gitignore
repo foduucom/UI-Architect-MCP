@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.DS_Store
+
+# Empty scaffold dirs (components live in src/engine/component-library.ts)
+src/components/
+*TEST*
+*.zip
+*.claude
+claude.md
