@@ -10,6 +10,8 @@
  *
  * Built by FODUU (https://foduu.com) — India's Web Design Company
  */
+import { LOCAL_COMPONENTS } from './local-library.js';
+import type { ComponentStyle } from './types.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -478,7 +480,22 @@ export function instantiateButton(
     return html;
   }
 
-  // Fallback: standard button
+  // Fallback: Use high-quality local component if available
+  const local = LOCAL_COMPONENTS.find(c => c.category === 'button-primary' && c.style === 'animated')
+    || LOCAL_COMPONENTS.find(c => c.category === 'button-primary');
+
+  if (local) {
+    let html = local.html;
+    html = replaceInnerText(html, text);
+    html = addClassToRoot(html, variantClass);
+    if (extraClasses) html = addClassToRoot(html, extraClasses);
+    if (href && href !== '#') {
+      html = html.replace(/^<button\b/, `<a href="${href}"`).replace(/<\/button>$/, '</a>');
+    }
+    return html;
+  }
+
+  // Last resort: primitive fallback
   return `<a href="${href}" class="btn ${variantClass} ${extraClasses}">${text}</a>`;
 }
 
@@ -525,9 +542,11 @@ export function instantiateCard(
 
       // Build inner content from our data
       const iconHtml = content.icon
-        ? content.icon.startsWith('http')
-          ? `<div class="card-icon"><img src="${content.icon}" alt="${content.title} icon" width="28" height="28" loading="lazy"></div>`
-          : `<div class="card-icon"><span>${content.icon}</span></div>`
+        ? content.icon.startsWith('<svg')
+          ? `<div class="card-icon">${content.icon}</div>`
+          : content.icon.startsWith('http')
+            ? `<div class="card-icon"><img src="${content.icon}" alt="${content.title} icon" width="28" height="28" loading="lazy"></div>`
+            : `<div class="card-icon"><span>${content.icon}</span></div>`
         : '';
       const imageHtml = content.image
         ? `<div class="card-image"><img src="${content.image}" alt="${content.title}" width="400" height="300" loading="lazy"></div>`
@@ -551,7 +570,31 @@ export function instantiateCard(
     }
   }
 
-  // Fallback: standard card
+  // Fallback: Use high-quality local component
+  const local = LOCAL_COMPONENTS.find(c => c.category === 'card' && c.style === 'animated')
+    || LOCAL_COMPONENTS.find(c => c.category === 'card');
+
+  if (local) {
+     // Recursively call with a "fake" map containing the local component
+     const fakeMap: UIverseComponentMap = {
+       cards: {
+         originalName: local.name,
+         category: 'cards',
+         html: local.html,
+         css: local.css,
+         keyframes: '',
+         projectClassName: 'card',
+         animationScore: 100,
+         sourceUrl: 'local'
+       },
+       combinedCss: local.css,
+       combinedKeyframes: '',
+       summary: 'Local fallback'
+     };
+     return instantiateCard(fakeMap, content, options);
+  }
+
+  // Last resort: primitive fallback
   const iconHtml = content.icon
     ? content.icon.startsWith('http')
       ? `<div class="card-icon"><img src="${content.icon}" alt="${content.title} icon" width="28" height="28" loading="lazy"></div>`
@@ -640,4 +683,68 @@ function addClassToRoot(html: string, className: string): string {
   }
   // No class attribute — add one
   return html.replace(/^<(\w+)/, `<$1 class="${className}"`);
+}
+/**
+ * Loads a UIverseComponentMap using only high-quality local components.
+ * Used as a fallback when GitHub API is unavailable.
+ */
+export function loadLocalUIverseMap(categories: string[]): UIverseComponentMap {
+  const result: UIverseComponentMap = {
+    combinedCss: '',
+    combinedKeyframes: '',
+    summary: 'Loaded from local component library.',
+  };
+
+  const allCss: string[] = [];
+  const adaptedCategories: string[] = [];
+
+  for (const category of categories) {
+    // Map internal folder names to engine categories with robust aliasing
+    const folder = category.toLowerCase();
+    const engineCategory = folder.replace(/s$/, '') as any;
+    
+    // Find highest animation level local component
+    // Try both the exact category and mapped aliases
+    const best = LOCAL_COMPONENTS.find(c => {
+      const cat = c.category.toLowerCase();
+      const match = cat === folder || 
+                   cat === engineCategory || 
+                   (folder === 'buttons' && cat.startsWith('button')) ||
+                   (folder === 'cards' && cat.includes('card')) ||
+                   (folder === 'inputs' && cat.includes('input'));
+      return match && (c as any).animationLevel === 'high';
+    }) || LOCAL_COMPONENTS.find(c => {
+      const cat = c.category.toLowerCase();
+      return cat === folder || 
+             cat === engineCategory || 
+             (folder === 'buttons' && cat.startsWith('button')) ||
+             (folder === 'cards' && cat.includes('card')) ||
+             (folder === 'inputs' && cat.includes('input'));
+    });
+
+    if (best) {
+      const projectClass = CATEGORY_CLASS_MAP[category] || category.replace(/s$/, '');
+      const adapted = adaptSingleComponent(best as any, projectClass);
+
+      const mapKey = category.replace(/-/g, '') as keyof UIverseComponentMap;
+      if (mapKey === 'buttons' || mapKey === 'cards' || mapKey === 'inputs' ||
+          mapKey === 'checkboxes' || mapKey === 'loaders' || mapKey === 'tooltips' ||
+          mapKey === 'badges' || mapKey === 'navigation') {
+        (result as any)[mapKey] = adapted;
+      }
+      if (category === 'toggle-switches') (result as any).toggles = adapted;
+      if (category === 'radio-buttons') (result as any).radios = adapted;
+
+      allCss.push(adapted.css);
+      if (category === 'buttons') allCss.push(generateButtonVariants(adapted));
+      if (category === 'cards') allCss.push(generateCardEnhancements(adapted));
+      
+      adaptedCategories.push(`${category} (local: ${best.id})`);
+    }
+  }
+
+  result.combinedCss = `/* Local UIverse Fallback */\n\n${allCss.join('\n\n')}`;
+  result.summary = `Loaded ${adaptedCategories.length} local component categories:\n${adaptedCategories.map((c) => `  - ${c}`).join('\n')}`;
+
+  return result;
 }

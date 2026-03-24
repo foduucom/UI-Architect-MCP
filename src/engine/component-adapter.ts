@@ -17,7 +17,7 @@ import type {
   Industry,
   Tone,
 } from './types.js';
-import { COMPONENT_LIBRARY } from './component-library.js';
+import { LOCAL_COMPONENTS as COMPONENT_LIBRARY } from './local-library.js';
 
 // ─── Industry → Style Mapping ────────────────────────────────────────────────
 

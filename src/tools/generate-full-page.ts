@@ -30,6 +30,8 @@ export interface GenerateFullPageInput {
   includeFooter?: boolean;
   /** Adapted UIverse components — passed through to each section generator */
   uiverseComponents?: UIverseComponentMap | null;
+  /** CSS from selected built-in components (for high-quality fallbacks) */
+  builtInComponentCss?: string;
   /** Resolved images per section type from fetchImages — passed through to section generators */
   imageData?: Record<string, import('./fetch-images.js').ResolvedImage[]> | null;
 }
@@ -606,7 +608,10 @@ export function generateFullPage(
   }
 
   // Generate shared CSS and JS
-  const { shared: allSharedCss } = deduplicateCss(allPageCss);
+  let { shared: allSharedCss } = deduplicateCss(allPageCss);
+  if (input.builtInComponentCss) {
+    allSharedCss = `/* Built-in Component Styles */\n${input.builtInComponentCss}\n\n${allSharedCss}`;
+  }
   const { shared: sharedJs, pageSpecific } = mergeJavaScript(
     allPageJs,
     pageSlugs

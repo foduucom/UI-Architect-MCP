@@ -72,11 +72,18 @@ const FONT_PAIRINGS: FontPairingEntry[] = [
     toneMatch: ['corporate', 'minimal', 'elegant'],
   },
   {
-    heading: 'Clash Display',
-    body: 'Satoshi',
-    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap',
-    bestFor: ['creative', 'gaming', 'luxury'],
-    toneMatch: ['bold', 'luxury', 'playful'],
+    heading: 'Syne',
+    body: 'Inter',
+    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap',
+    bestFor: ['creative', 'gaming', 'luxury', 'startup'],
+    toneMatch: ['bold', 'modern', 'playful'],
+  },
+  {
+    heading: 'Libre Baskerville',
+    body: 'Source Sans 3',
+    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;500;600&display=swap',
+    bestFor: ['legal', 'corporate', 'education'],
+    toneMatch: ['luxury', 'elegant', 'corporate'],
   },
   {
     heading: 'Bricolage Grotesque',
@@ -160,25 +167,28 @@ export function generateSpacing(): SpacingSystem {
 
 export function generateShadows(): ShadowSystem {
   return {
-    sm: '0 1px 2px rgba(0,0,0,0.05)',
-    md: '0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05)',
-    lg: '0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04)',
-    xl: '0 20px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.04)',
+    sm: '0 2px 4px rgba(0,0,0,0.02), 0 1px 2px rgba(0,0,0,0.06)',
+    md: '0 4px 12px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.05)',
+    lg: '0 12px 24px rgba(0,0,0,0.07), 0 4px 8px rgba(0,0,0,0.04)',
+    xl: '0 24px 48px rgba(0,0,0,0.12), 0 8px 16px rgba(0,0,0,0.06)',
   };
 }
 
 // ─── Border Radius System ────────────────────────────────────────────────────
 
 export function generateRadius(tone: Tone): RadiusSystem {
-  // Corporate/legal → smaller radii. Playful/startup → larger.
-  const isRounded = ['playful', 'warm', 'modern'].includes(tone);
-  const isSharp = ['corporate', 'technical', 'minimal'].includes(tone);
-
-  if (isSharp) {
-    return { sm: '2px', md: '4px', lg: '6px', xl: '8px', full: '9999px' };
+  // Agency Quality: Radical vs Sharp vs Soft
+  if (tone === 'playful') {
+    return { sm: '8px', md: '16px', lg: '32px', xl: '48px', full: '9999px' };
   }
-  if (isRounded) {
-    return { sm: '6px', md: '10px', lg: '14px', xl: '20px', full: '9999px' };
+  if (tone === 'modern' || tone === 'warm') {
+    return { sm: '6px', md: '12px', lg: '20px', xl: '28px', full: '9999px' };
+  }
+  if (tone === 'corporate' || tone === 'technical' || tone === 'minimal') {
+    return { sm: '0px', md: '2px', lg: '4px', xl: '8px', full: '9999px' };
+  }
+  if (tone === 'luxury' || tone === 'elegant') {
+    return { sm: '2px', md: '4px', lg: '8px', xl: '12px', full: '9999px' };
   }
   // Default
   return { sm: '4px', md: '8px', lg: '12px', xl: '16px', full: '9999px' };

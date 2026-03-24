@@ -3,9 +3,8 @@ dist/
 *.tsbuildinfo
 .env
 .DS_Store
-
 # Empty scaffold dirs (components live in src/engine/component-library.ts)
-src/components/
+src/components/*/*.html
 *TEST*
 *.zip
 *.claude

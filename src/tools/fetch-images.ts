@@ -29,6 +29,7 @@ export interface ResolvedImage {
   photographerUrl?: string;
   sourceUrl?: string;
   isIcon: boolean;
+  svgContent?: string;
 }
 
 export interface SectionImageRequest {
@@ -674,12 +675,26 @@ function resolveIconByKeyword(keyword: string): string {
   return 'sparkles'; // universal fallback
 }
 
-function generateLucideIcons(
+async function fetchSvgContent(url: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return undefined;
+    const text = await res.text();
+    // Basic cleanup: remove xml declaration and set currentColor
+    return text
+      .replace(/<\?xml[^>]*\?>/gi, '')
+      .replace(/<svg/, '<svg fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"');
+  } catch {
+    return undefined;
+  }
+}
+
+async function generateLucideIcons(
   count: number,
   keywords: string[],
   industry: string,
   altBase: string,
-): ResolvedImage[] {
+): Promise<ResolvedImage[]> {
   const icons: ResolvedImage[] = [];
 
   // Use keywords if provided
@@ -687,13 +702,17 @@ function generateLucideIcons(
     for (let i = 0; i < count; i++) {
       const keyword = keywords[i % keywords.length];
       const iconName = resolveIconByKeyword(keyword);
+      const url = `${LUCIDE_CDN}/${iconName}.svg`;
+      const svgContent = await fetchSvgContent(url);
+      
       icons.push({
-        url: `${LUCIDE_CDN}/${iconName}.svg`,
+        url,
         alt: `${altBase} — ${keyword}`,
         width: 24,
         height: 24,
         source: 'lucide' as const,
         isIcon: true,
+        svgContent,
       });
     }
   } else {
@@ -701,13 +720,17 @@ function generateLucideIcons(
     const industryIcons = INDUSTRY_FEATURE_ICONS[industry] || INDUSTRY_FEATURE_ICONS['technology'];
     for (let i = 0; i < count; i++) {
       const iconName = industryIcons[i % industryIcons.length];
+      const url = `${LUCIDE_CDN}/${iconName}.svg`;
+      const svgContent = await fetchSvgContent(url);
+
       icons.push({
-        url: `${LUCIDE_CDN}/${iconName}.svg`,
+        url,
         alt: `${altBase} ${i + 1}`,
         width: 24,
         height: 24,
         source: 'lucide' as const,
         isIcon: true,
+        svgContent,
       });
     }
   }
@@ -798,7 +821,21 @@ export async function fetchImages(input: FetchImagesInput): Promise<FetchImagesO
     const strategy = SECTION_IMAGE_STRATEGY[section.sectionType];
 
     if (!strategy || strategy.defaultCount === 0) {
-      images[section.sectionType] = [];
+      if (strategy && strategy.style === 'icon') { // Only process icons if strategy exists and is icon-based
+        const keywords = section.keywords || [];
+        const industry = section.industry || globalIndustry;
+        const iconImages = await generateLucideIcons(
+          section.count || strategy.defaultCount, // Use section.count or defaultCount (which is 0 here)
+          keywords,
+          industry,
+          strategy.altBase
+        );
+        images[section.sectionType] = iconImages;
+        sources.lucide += iconImages.length;
+        totalImages += iconImages.length;
+      } else {
+        images[section.sectionType] = [];
+      }
       continue;
     }
 
@@ -809,7 +846,7 @@ export async function fetchImages(input: FetchImagesInput): Promise<FetchImagesO
 
     if (strategy.style === 'icon' || input.preferIcons) {
       // Use Lucide icons
-      sectionImages = generateLucideIcons(
+      sectionImages = await generateLucideIcons(
         count,
         section.keywords || [],
         industry,

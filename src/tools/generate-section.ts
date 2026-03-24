@@ -60,6 +60,7 @@ export interface SectionContent {
   ctaText?: string;
   ctaSecondaryText?: string;
   backgroundStyle?: string;
+  image?: string;
 }
 
 export interface GenerateSectionOutput {
@@ -381,9 +382,9 @@ function generateHeroSection(
   sectionIndex: number,
   ctx?: SectionContext
 ): { html: string; css: string; js: string } {
-  // Use real fetched image or fall back to Picsum
+  // Use real fetched image, explicit content image, or fall back to Picsum
   const heroImage = ctx?.images?.[0];
-  const heroImgUrl = heroImage?.url || resolvePicsumUrl(1200, 600, sectionIndex + 1);
+  const heroImgUrl = heroImage?.url || content.image || resolvePicsumUrl(1200, 600, sectionIndex + 1);
   const heroImgAlt = heroImage?.alt || content.headline || 'Hero image';
 
   // Use UIverse button templates if available
@@ -515,15 +516,17 @@ function generateFeaturesSection(
         // Use fetched icon image if available
         const fetchedIcon = ctx?.images?.[i];
         const iconUrl = fetchedIcon?.isIcon ? fetchedIcon.url : (item.icon && item.icon.startsWith('http') ? item.icon : null);
-        const iconSrc = iconUrl
-          ? `<img src="${iconUrl}" alt="${item.title} icon" class="feature-icon-img" width="28" height="28" loading="lazy">`
-          : `<span class="feature-icon-emoji">${item.icon || '✦'}</span>`;
+        const iconSrc = fetchedIcon?.svgContent 
+          ? fetchedIcon.svgContent 
+          : (iconUrl
+            ? `<img src="${iconUrl}" alt="${item.title} icon" class="feature-icon-img" width="28" height="28" loading="lazy">`
+            : `<span class="feature-icon-emoji">${item.icon || '✦'}</span>`);
 
         // Use UIverse card template if available
         return instantiateCard(ctx?.uiverse, {
           title: item.title,
           description: item.description,
-          icon: iconUrl || item.icon || '✦',
+          icon: fetchedIcon?.svgContent || iconUrl || item.icon || '✦',
           index: i,
         }, {
           extraClasses: 'feature-card',
@@ -1596,12 +1599,15 @@ function generateHowItWorksSection(
   const stepsHtml = items
     .map(
       (item, i) => {
-        const iconContent = item.icon && item.icon.startsWith('http')
-          ? `<img src="${item.icon}" alt="${item.title} icon" class="step-icon-img" width="28" height="28" loading="lazy">`
-          : `<span>${item.icon || i + 1}</span>`;
+        const fetchedIcon = ctx?.images?.[i];
+        const iconSrc = fetchedIcon?.svgContent
+          ? fetchedIcon.svgContent
+          : (item.icon && item.icon.startsWith('http')
+            ? `<img src="${item.icon}" alt="${item.title} icon" class="step-icon-img" width="28" height="28" loading="lazy">`
+            : `<span class="step-icon-emoji">${item.icon || (i + 1)}</span>`);
         return `
         <div class="step-card animate-on-scroll" style="transition-delay: ${i * 150}ms">
-          <div class="step-number">${iconContent}</div>
+          <div class="step-number">${iconSrc}</div>
           <h3 class="step-title">${item.title}</h3>
           <p class="step-description">${item.description}</p>
         </div>`;
@@ -2058,9 +2064,9 @@ function generateAboutSection(
   sectionIndex: number,
   ctx?: SectionContext
 ): { html: string; css: string; js: string } {
-  // Use fetched image or fall back
+  // Use fetched image, explicit content image, or fall back
   const aboutImage = ctx?.images?.[0];
-  const aboutImgUrl = aboutImage?.url || resolvePicsumUrl(800, 500, sectionIndex + 50);
+  const aboutImgUrl = aboutImage?.url || content.image || resolvePicsumUrl(800, 500, sectionIndex + 50);
   const aboutImgAlt = aboutImage?.alt || content.headline || 'About our company';
   const ctaBtn = content.ctaText
     ? instantiateButton(ctx?.uiverse, content.ctaText, { variant: 'secondary', href: '#' })

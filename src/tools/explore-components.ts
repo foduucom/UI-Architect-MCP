@@ -235,12 +235,16 @@ async function fetchComponentListFromGitHub(category: string): Promise<string[]>
   const url = `${API_BASE}/${GITHUB_REPO}/contents/${category}?ref=${GITHUB_BRANCH}`;
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'UIArchitectMCP/1.0',
-        'Accept': 'application/vnd.github.v3+json',
-      },
-    });
+    const headers: Record<string, string> = {
+      'User-Agent': 'UIArchitectMCP/1.0',
+      'Accept': 'application/vnd.github.v3+json',
+    };
+
+    if (process.env.GITHUB_TOKEN) {
+      headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+    }
+
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -279,11 +283,15 @@ async function fetchComponentContentFromGitHub(
   const url = `${RAW_BASE}/${GITHUB_REPO}/${GITHUB_BRANCH}/${category}/${filename}`;
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'UIArchitectMCP/1.0',
-      },
-    });
+    const headers: Record<string, string> = {
+      'User-Agent': 'UIArchitectMCP/1.0',
+    };
+
+    if (process.env.GITHUB_TOKEN) {
+      headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+    }
+
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`GitHub API error: ${response.status}`);

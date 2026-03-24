@@ -38,7 +38,7 @@ import { designConsistencyCheck } from './design-consistency-check.js';
 import { generateBuildManifest } from './generate-build-manifest.js';
 import { fetchImages } from './fetch-images.js';
 import { seoFix } from './seo-fix.js';
-import { adaptUIverseComponents, type UIverseComponentMap } from '../engine/uiverse-adapter.js';
+import { adaptUIverseComponents, loadLocalUIverseMap, type UIverseComponentMap } from '../engine/uiverse-adapter.js';
 import type { DesignTokens } from '../engine/types.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -202,25 +202,26 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
   let adaptedUIverse: UIverseComponentMap | null = null;
 
   if (!input.skipUIverse) {
+    const mappedCategories: string[] = [];
+    for (const c of plan.allComponentsNeeded) {
+      let mapped: string | null = null;
+      if (c.includes('button')) mapped = 'buttons';
+      else if (c.includes('card')) mapped = 'cards';
+      else if (c.includes('input')) mapped = 'inputs';
+      else if (c.includes('loader')) mapped = 'loaders';
+      else if (c.includes('toggle')) mapped = 'toggle-switches';
+      else if (c.includes('checkbox')) mapped = 'checkboxes';
+      else if (c.includes('radio')) mapped = 'radio-buttons';
+      else if (c.includes('tooltip')) mapped = 'tooltips';
+      else if (c.includes('badge')) mapped = 'badges';
+      else if (c.includes('nav')) mapped = 'navigation';
+      if (mapped && !mappedCategories.includes(mapped)) {
+        mappedCategories.push(mapped);
+      }
+    }
+
     try {
       const explored = await timedStepAsync('4. explore_components', async () => {
-        const mappedCategories: string[] = [];
-        for (const c of plan.allComponentsNeeded) {
-          let mapped: string | null = null;
-          if (c.includes('button')) mapped = 'buttons';
-          else if (c.includes('card')) mapped = 'cards';
-          else if (c.includes('input')) mapped = 'inputs';
-          else if (c.includes('loader')) mapped = 'loaders';
-          else if (c.includes('toggle')) mapped = 'toggle-switches';
-          else if (c.includes('checkbox')) mapped = 'checkboxes';
-          else if (c.includes('radio')) mapped = 'radio-buttons';
-          else if (c.includes('tooltip')) mapped = 'tooltips';
-          else if (c.includes('badge')) mapped = 'badges';
-          else if (c.includes('nav')) mapped = 'navigation';
-          if (mapped && !mappedCategories.includes(mapped)) {
-            mappedCategories.push(mapped);
-          }
-        }
         return exploreComponents({
           categories: mappedCategories,
           preferAnimated: true,
@@ -235,23 +236,49 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
         adaptedUIverse = timedStep('4b. adapt_uiverse_components', () => {
           return adaptUIverseComponents(uiverseComponents);
         }, log);
+      } else {
+        throw new Error('No components found on GitHub');
       }
-    } catch {
-      // Non-blocking — UIverse fetch is optional
+    } catch (err) {
+      // Non-blocking fallback to local UIverse-quality components
       log.push({
         step: '4. explore_components',
         status: 'warning',
         duration: 0,
-        message: 'UIverse fetch skipped (rate limit or network issue). Using built-in components only.',
+        message: `Remote fetch failed (${err instanceof Error ? err.message : String(err)}). Using high-quality local components instead.`,
       });
+      
+      adaptedUIverse = timedStep('4b. load_local_uiverse_components', () => {
+        return loadLocalUIverseMap(mappedCategories);
+      }, log);
     }
   } else {
     log.push({
       step: '4. explore_components',
       status: 'skipped',
       duration: 0,
-      message: 'Skipped — skipUIverse=true',
+      message: 'Skipped — skipUIverse=true. Loading local components.',
     });
+    
+    // Even if skipped, we load local components for quality
+      adaptedUIverse = timedStep('4b. load_local_uiverse_components', () => {
+        const mappedCategories: string[] = [];
+        for (const c of plan.allComponentsNeeded) {
+          let mapped: string | null = null;
+          if (c.includes('button')) mapped = 'buttons';
+          else if (c.includes('card')) mapped = 'cards';
+          else if (c.includes('input')) mapped = 'inputs';
+          else if (c.includes('loader')) mapped = 'loaders';
+          else if (c.includes('toggle')) mapped = 'toggle-switches';
+          else if (c.includes('checkbox')) mapped = 'checkboxes';
+          else if (c.includes('radio')) mapped = 'radio-buttons';
+          else if (c.includes('tooltip')) mapped = 'tooltips';
+          else if (c.includes('badge')) mapped = 'badges';
+          else if (c.includes('nav')) mapped = 'navigation';
+          if (mapped && !mappedCategories.includes(mapped)) mappedCategories.push(mapped);
+        }
+        return loadLocalUIverseMap(mappedCategories);
+      }, log);
   }
 
   // ── Step 5: Select Components (from built-in library) ────────────────────
@@ -336,6 +363,9 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
 
   // Initial generation
   fullPageOutput = timedStep('9. generate_full_page', () => {
+    // Extract CSS from built-in components to ensure they have styles
+    const builtInCss = selected.components.map(c => c.styles).join('\n\n');
+
     return generateFullPage({
       pages: scope.pages,
       framework,
@@ -344,6 +374,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       includeNavigation: true,
       includeFooter: true,
       uiverseComponents: adaptedUIverse,
+      builtInComponentCss: builtInCss,
       imageData: imageData.images || null,
     });
   }, log);
@@ -396,6 +427,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       } else {
         // Re-generate pages
         fullPageOutput = timedStep(`9. generate_full_page (retry #${retryCount})`, () => {
+          const builtInCss = selected.components.map(c => c.styles).join('\n\n');
           return generateFullPage({
             pages: scope.pages,
             framework,
@@ -404,6 +436,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
             includeNavigation: true,
             includeFooter: true,
             uiverseComponents: adaptedUIverse,
+            builtInComponentCss: builtInCss,
             imageData: imageData.images || null,
           });
         }, log);
