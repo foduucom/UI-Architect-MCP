@@ -21,7 +21,8 @@
  *   9.  seo_audit:               Phase 6.5 — SEO & digital marketing audit
  *   10. design_consistency_check: Phase 6.7 — Multi-page design consistency validation
  *   11. review_output:           Phase 7 — QA review against quality checklist
- *   12. generate_build_manifest: Final — Component report with GitHub URLs per page
+ *   12. fetch_images:            Phase 5.5 — Resolve stock photos + SVG icons for all sections
+ *   13. generate_build_manifest: Final — Component report with GitHub URLs per page
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -40,6 +41,10 @@ import { exploreComponents } from './tools/explore-components.js';
 import { seoAudit } from './tools/seo-audit.js';
 import { designConsistencyCheck } from './tools/design-consistency-check.js';
 import { generateBuildManifest } from './tools/generate-build-manifest.js';
+import { fetchImages } from './tools/fetch-images.js';
+import { runPipeline } from './tools/run-pipeline.js';
+import { generateContent } from './tools/generate-content.js';
+import { seoFix } from './tools/seo-fix.js';
 import type { DesignTokens, Framework } from './engine/types.js';
 import type { ProjectScope, AnalyzeProjectOutput } from './tools/analyze-project.js';
 import type { ArchitecturePlan } from './tools/plan-architecture.js';
@@ -973,7 +978,100 @@ Call this AFTER generating all pages with generate_full_page.`,
   }
 );
 
-// ─── Tool 12: generate_build_manifest (Final — Component Report) ─────────────
+// ─── Tool 12: fetch_images (Phase 5.5 — Image Resolution) ───────────────────
+
+server.tool(
+  'fetch_images',
+  `Phase 5.5 — Resolve real images for every section of the website.
+
+3-Layer Image System:
+  Layer 1: Unsplash API (keyword-matched HD stock photos — needs UNSPLASH_ACCESS_KEY env var)
+  Layer 2: Pexels API (fallback stock photos — needs PEXELS_API_KEY env var)
+  Layer 3: Lorem Picsum (always works, zero config — real photos from Unsplash, random but consistent via seed)
+  Icons: Lucide CDN (always works, zero config — 1,500+ SVG icons via CDN URL)
+
+Returns: ready-to-use image URLs per section (hero photos, team portraits, feature icons, testimonial avatars, gallery shots, product images) — all matched to the project industry.
+
+Works WITHOUT any API keys — Lorem Picsum + Lucide icons provide real images and icons out of the box. Add Unsplash/Pexels keys for keyword-matched results.
+
+IMAGE TYPES PER SECTION:
+  hero → full-width landscape photo | features → SVG icons | team → portrait photos
+  testimonials → avatar photos | about → company/office photo | services → SVG icons
+  pricing → plan icons | gallery → multiple photos | product-grid → product photos
+  blog → cover photos | how-it-works → step icons | stats → stat icons
+
+Call this AFTER scaffold_project, BEFORE or alongside generate_full_page.`,
+  {
+    sections: z.array(z.object({
+      sectionType: z.string().describe('Section type: hero, features, team, testimonials, about, services, pricing, gallery, blog, etc.'),
+      industry: z.string().optional().describe('Override industry for this section'),
+      count: z.number().optional().describe('Number of images needed (default: auto per section type)'),
+      keywords: z.array(z.string()).optional().describe('Search keywords for photo matching (e.g., ["fintech dashboard", "mobile app"])'),
+    })).describe('List of sections that need images'),
+    industry: z.string().optional().describe('Global industry context for image search (e.g., "fintech", "healthcare")'),
+    preferIcons: z.boolean().optional().describe('Force SVG icons for all sections instead of photos. Default: false'),
+  },
+  async ({ sections, industry, preferIcons }) => {
+    try {
+      const result = await fetchImages({
+        sections,
+        industry: industry || currentScope?.industry || 'technology',
+        preferIcons,
+      });
+
+      let output = result.summary;
+
+      output += '\n\n---\n\n';
+
+      // Per-section image output
+      for (const [sectionType, sectionImages] of Object.entries(result.images)) {
+        if (sectionImages.length === 0) continue;
+
+        output += `### ${sectionType} (${sectionImages.length} image${sectionImages.length !== 1 ? 's' : ''})\n\n`;
+
+        for (const img of sectionImages) {
+          if (img.isIcon) {
+            output += `- 🎨 **Icon:** \`${img.url}\` — ${img.alt}\n`;
+            output += `  \`\`\`html\n  <img src="${img.url}" alt="${img.alt}" width="24" height="24" class="icon">\n  \`\`\`\n`;
+          } else {
+            output += `- 📸 **Photo:** \`${img.url}\`\n`;
+            output += `  Alt: "${img.alt}" | ${img.width}×${img.height} | Source: ${img.source}`;
+            if (img.photographer) output += ` | By: ${img.photographer}`;
+            output += '\n';
+            output += `  \`\`\`html\n  <img src="${img.url}" alt="${img.alt}" width="${img.width}" height="${img.height}" loading="lazy" decoding="async">\n  \`\`\`\n`;
+          }
+        }
+        output += '\n';
+      }
+
+      // Attributions
+      if (result.attributions.length > 0) {
+        output += '### Photo Attributions\n\n';
+        result.attributions.forEach((a) => {
+          output += `- ${a}\n`;
+        });
+        output += '\n';
+      }
+
+      // API key hint
+      if (!process.env.UNSPLASH_ACCESS_KEY && !process.env.PEXELS_API_KEY) {
+        output += '---\n\n💡 **Tip:** Add `UNSPLASH_ACCESS_KEY` or `PEXELS_API_KEY` to your MCP config for keyword-matched stock photos:\n';
+        output += '```json\n{\n  "mcpServers": {\n    "ui-architect": {\n      "env": {\n        "UNSPLASH_ACCESS_KEY": "your-free-key-from-unsplash.com/developers",\n        "PEXELS_API_KEY": "your-free-key-from-pexels.com/api"\n      }\n    }\n  }\n}\n```\n';
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: output }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error fetching images: ${String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// ─── Tool 13: generate_build_manifest (Final — Component Report) ─────────────
 
 server.tool(
   'generate_build_manifest',
@@ -1073,12 +1171,187 @@ The Markdown file acts as a project handoff document — it tells the developer 
   }
 );
 
+// ─── Tool 14: generate_content ───────────────────────────────────────────────
+
+server.tool(
+  'generate_content',
+  'Industry-aware content generator — produces structured section copy (headlines, features, pricing, testimonials, etc.) tailored to industry and audience. No API key needed.',
+  {
+    sectionType: z.string().describe('Section type: hero, features, pricing, testimonials, about, cta, faq, how-it-works, team'),
+    industry: z.string().optional().describe('Industry vertical for context'),
+    audience: z.string().optional().describe('Target audience'),
+    brandName: z.string().optional().describe('Brand/company name'),
+    tone: z.string().optional().describe('Tone: professional, casual, playful, luxury, technical'),
+    itemCount: z.number().optional().describe('Number of items to generate (e.g., 3 features, 5 FAQ items)'),
+    context: z.string().optional().describe('Additional context or instructions'),
+  },
+  async (params) => {
+    try {
+      const result = generateContent({
+        sectionType: params.sectionType,
+        industry: params.industry,
+        audience: params.audience,
+        brandName: params.brandName,
+        tone: params.tone,
+        itemCount: params.itemCount,
+        context: params.context,
+      });
+
+      let output = `## Generated Content (${result.source})\n\n`;
+      output += '```json\n' + JSON.stringify(result.content, null, 2) + '\n```';
+
+      return {
+        content: [{ type: 'text' as const, text: output }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error generating content: ${String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// ─── Tool 15: seo_fix ───────────────────────────────────────────────────────
+
+server.tool(
+  'seo_fix',
+  'Auto-patches HTML based on SEO audit results — adds missing meta tags, alt text, Open Graph, canonical links, heading hierarchy, lazy loading, and more. No API key needed.',
+  {
+    html: z.string().describe('The HTML code to fix'),
+    css: z.string().describe('The CSS code (passed through, may be referenced)'),
+    auditScore: z.number().describe('SEO audit score from seo_audit'),
+    auditGrade: z.string().describe('SEO audit grade (A-F)'),
+    auditIssues: z.string().describe('JSON stringified array of SEO issues from seo_audit'),
+    auditRecommendations: z.string().optional().describe('JSON stringified recommendations array'),
+    auditMissingElements: z.string().optional().describe('JSON stringified missing elements array'),
+    industry: z.string().optional().describe('Industry for contextual fixes'),
+    pageName: z.string().optional().describe('Page name for meta tags'),
+    targetKeywords: z.string().optional().describe('Comma-separated target keywords'),
+  },
+  async (params) => {
+    try {
+      let issues: any[] = [];
+      let recommendations: string[] = [];
+      let missingElements: string[] = [];
+
+      try { issues = JSON.parse(params.auditIssues); } catch { issues = []; }
+      try { recommendations = JSON.parse(params.auditRecommendations || '[]'); } catch { recommendations = []; }
+      try { missingElements = JSON.parse(params.auditMissingElements || '[]'); } catch { missingElements = []; }
+
+      const result = await seoFix({
+        html: params.html,
+        css: params.css,
+        auditResult: {
+          score: params.auditScore,
+          grade: params.auditGrade as any,
+          issues,
+          passed: params.auditScore >= 70,
+          summary: '',
+          recommendations,
+          missingElements,
+        },
+        industry: params.industry,
+        pageName: params.pageName,
+        targetKeywords: params.targetKeywords?.split(',').map((k) => k.trim()),
+      });
+
+      let output = `## SEO Fix Results\n\n`;
+      output += `**Fixes applied:** ${result.fixCount}\n`;
+      output += `**Estimated score improvement:** +${result.estimatedScoreImprovement}\n\n`;
+      output += result.summary + '\n\n';
+      output += '### Fixed HTML\n\n```html\n' + result.html + '\n```';
+
+      return {
+        content: [{ type: 'text' as const, text: output }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error applying SEO fixes: ${String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// ─── Tool 16: run_pipeline ───────────────────────────────────────────────────
+
+server.tool(
+  'run_pipeline',
+  'Full orchestration pipeline — chains all 13 tools end-to-end to produce a complete website from a single description. Includes automatic SEO/QA retry loop.',
+  {
+    description: z.string().describe('What the website/page is about — e.g. "Landing page for a fintech startup offering budgeting tools"'),
+    audience: z.string().optional().describe('Target audience — e.g. "millennials", "enterprise CTOs"'),
+    industry: z.string().optional().describe('Industry vertical — e.g. "finance", "healthcare", "ecommerce"'),
+    framework: z.string().optional().describe('Target framework — html, react, nextjs, vue, nuxt, angular, svelte, astro. Defaults to html.'),
+    pageCount: z.number().optional().describe('Number of pages to generate. Defaults to 1.'),
+    themePreference: z.enum(['light', 'dark', 'auto']).optional().describe('Theme preference. Defaults to auto (industry-based).'),
+    brandColor: z.string().optional().describe('Optional brand hex color to anchor the palette — e.g. "#2563EB"'),
+    skipUIverse: z.boolean().optional().describe('Skip UIverse component exploration. Defaults to false.'),
+    seoThreshold: z.number().optional().describe('Minimum SEO score (0-100) to pass. Defaults to 70.'),
+    qaThreshold: z.number().optional().describe('Minimum QA score (0-100) to pass. Defaults to 60.'),
+    maxRetries: z.number().optional().describe('Max retry attempts if SEO/QA fails. Defaults to 2.'),
+  },
+  async (params) => {
+    try {
+      const result = await runPipeline({
+        description: params.description,
+        audience: params.audience,
+        industry: params.industry,
+        framework: params.framework,
+        pageCount: params.pageCount,
+        themePreference: params.themePreference as 'light' | 'dark' | 'auto' | undefined,
+        brandColor: params.brandColor,
+        skipUIverse: params.skipUIverse,
+        seoThreshold: params.seoThreshold,
+        qaThreshold: params.qaThreshold,
+        maxRetries: params.maxRetries,
+      });
+
+      let output = `# Pipeline Complete\n\n`;
+      output += `**Pages generated:** ${result.pages.length}\n`;
+      output += `**Framework:** ${result.framework}\n`;
+      output += `**SEO Score:** ${result.seoScore ?? 'N/A'}\n`;
+      output += `**QA Score:** ${result.qaScore ?? 'N/A'}\n`;
+      output += `**Duration:** ${result.pipelineLog.map((l: any) => l.duration || 0).reduce((a: number, b: number) => a + b, 0)}ms\n\n`;
+
+      output += `## Pipeline Log\n\n`;
+      for (const log of result.pipelineLog) {
+        output += `- **${log.step}**: ${log.duration}ms ${log.status === 'error' ? '❌' : '✅'}\n`;
+      }
+
+      output += `\n## Pages\n\n`;
+      for (const page of result.pages) {
+        output += `### ${page.name} (${page.slug})\n\n`;
+        output += `**HTML** (${page.html.length} chars)\n\`\`\`html\n${page.html}\n\`\`\`\n\n`;
+        output += `**CSS** (${page.css.length} chars)\n\`\`\`css\n${page.css}\n\`\`\`\n\n`;
+        if (page.js) {
+          output += `**JS** (${page.js.length} chars)\n\`\`\`javascript\n${page.js}\n\`\`\`\n\n`;
+        }
+      }
+
+      if (result.buildManifest) {
+        output += `\n## Build Manifest\n\n${result.buildManifest}\n`;
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: output }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Pipeline error: ${String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
 // ─── Start Server ────────────────────────────────────────────────────────────
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('UI Architect MCP Server v3.0.0 running on stdio — 12 tools loaded');
+  console.error('UI Architect MCP Server v4.0.0 running on stdio — 16 tools loaded');
 }
 
 main().catch((error) => {

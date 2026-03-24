@@ -19,6 +19,7 @@ import {
   radiusToCssVariables,
   transitionsToCssVariables,
 } from '../engine/typography-engine.js';
+import type { UIverseComponentMap } from '../engine/uiverse-adapter.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -32,6 +33,8 @@ export interface ScaffoldProjectInput {
     isHomepage: boolean;
   }>;
   projectName?: string;
+  /** When provided, UIverse component CSS replaces hardcoded base component styles */
+  uiverseComponents?: UIverseComponentMap | null;
 }
 
 export interface ScaffoldFile {
@@ -130,10 +133,16 @@ ul, ol {
 }`;
 }
 
-function generateAnimationsCss(): string {
+function generateAnimationsCss(uiverse?: UIverseComponentMap | null): string {
+  // UIverse component CSS (replaces hardcoded .btn, .card, .input-field styles)
+  const uiverseComponentCss = uiverse?.combinedCss || '';
+  const uiverseKeyframes = uiverse?.combinedKeyframes || '';
+  const hasUIverse = !!(uiverse && uiverseComponentCss);
+
   return `/**
  * Animation System
  * Scroll-triggered, hover, and ambient animations
+ *${hasUIverse ? '\n * Component styles powered by UIverse.io open-source library' : ''}
  */
 
 /* ─── Scroll Entrance Animations ─── */
@@ -194,6 +203,16 @@ function generateAnimationsCss(): string {
 .stagger-children .animate-on-scroll:nth-child(5) { transition-delay: 400ms; }
 .stagger-children .animate-on-scroll:nth-child(6) { transition-delay: 500ms; }
 
+${hasUIverse ? `
+/* ═══════════════════════════════════════════════════════════════════════ */
+/* Component Styles — Powered by UIverse.io open-source library          */
+/* All colors remapped to project CSS custom properties                  */
+/* ═══════════════════════════════════════════════════════════════════════ */
+
+${uiverseComponentCss}
+
+${uiverseKeyframes}
+` : `
 /* ─── Card Hover Animations ─── */
 .card {
   transition: transform var(--transition-base),
@@ -246,6 +265,20 @@ function generateAnimationsCss(): string {
   transform: translateX(100%);
 }
 
+/* ─── Input Focus Animations ─── */
+.input-field {
+  transition: border-color var(--transition-fast),
+              box-shadow var(--transition-fast),
+              background-color var(--transition-fast);
+}
+
+.input-field:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb, 59, 130, 246), 0.15);
+  background-color: var(--color-neutral-50);
+}
+`}
+
 /* ─── Link / Nav Hover Animations ─── */
 .nav-link {
   position: relative;
@@ -267,19 +300,6 @@ function generateAnimationsCss(): string {
   width: 100%;
 }
 
-/* ─── Input Focus Animations ─── */
-.input-field {
-  transition: border-color var(--transition-fast),
-              box-shadow var(--transition-fast),
-              background-color var(--transition-fast);
-}
-
-.input-field:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-  background-color: var(--color-neutral-50);
-}
-
 /* ─── Ambient / Decorative Animations ─── */
 @keyframes float {
   0%, 100% { transform: translateY(0); }
@@ -287,8 +307,8 @@ function generateAnimationsCss(): string {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3); }
-  50% { box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.15); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--color-primary-rgb, 59, 130, 246), 0.3); }
+  50% { box-shadow: 0 0 20px 5px rgba(var(--color-primary-rgb, 59, 130, 246), 0.15); }
 }
 
 @keyframes gradient-shift {
@@ -1452,8 +1472,8 @@ export function scaffoldProject(input: ScaffoldProjectInput): ScaffoldProjectOut
 
   files.push({
     path: `${cssPrefix}/animations.css`,
-    content: generateAnimationsCss(),
-    description: 'Scroll and interaction animations',
+    content: generateAnimationsCss(input.uiverseComponents),
+    description: input.uiverseComponents?.combinedCss ? 'UIverse component styles + scroll/interaction animations' : 'Scroll and interaction animations',
   });
 
   files.push({

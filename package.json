@@ -1,6 +1,6 @@
 {
   "name": "ui-architect-mcp",
-  "version": "0.1.0",
+  "version": "2.1.0",
   "description": "The ultimate MCP server for generating production-ready, agency-quality UI — across any framework, no CSS framework lock-in.",
   "type": "module",
   "main": "dist/index.js",

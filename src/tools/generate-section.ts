@@ -14,6 +14,21 @@ import type {
   ComponentCategory,
   AdaptedComponent,
 } from '../engine/types.js';
+import {
+  resolveIconForKeyword,
+  getIndustryIcons,
+  resolvePicsumUrl,
+} from './fetch-images.js';
+import type { UIverseComponentMap } from '../engine/uiverse-adapter.js';
+import {
+  getUIverseCss,
+  getUIverseHtml,
+  hasUIverseComponent,
+  instantiateButton,
+  instantiateCard,
+  instantiateInput,
+} from '../engine/uiverse-adapter.js';
+import type { ResolvedImage } from './fetch-images.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +38,10 @@ export interface GenerateSectionInput {
   designTokens: DesignTokens;
   content?: SectionContent;
   sectionIndex?: number;
+  /** Adapted UIverse components — when provided, these replace built-in component CSS */
+  uiverseComponents?: UIverseComponentMap | null;
+  /** Resolved images per section type from fetchImages */
+  imageData?: Record<string, import('./fetch-images.js').ResolvedImage[]> | null;
 }
 
 export interface SectionContent {
@@ -101,42 +120,45 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
       ctaText: 'Get Started',
       ctaSecondaryText: 'Learn More',
     },
-    'features': {
-      headline: 'Everything You Need',
-      subheadline: 'Powerful features designed to help you succeed.',
-      items: [
-        {
-          title: 'Lightning Fast',
-          description: 'Optimized for speed and performance. Every millisecond counts when it comes to user experience.',
-          icon: '⚡',
-        },
-        {
-          title: 'Secure by Default',
-          description: 'Enterprise-grade security built into every layer. Your data is always protected.',
-          icon: '🔒',
-        },
-        {
-          title: 'Easy Integration',
-          description: 'Connect with your existing tools in minutes. We support 100+ integrations out of the box.',
-          icon: '🔗',
-        },
-        {
-          title: 'Analytics Built-in',
-          description: 'Track everything that matters with real-time dashboards and custom reports.',
-          icon: '📊',
-        },
-        {
-          title: '24/7 Support',
-          description: 'Our team is always available to help you succeed. Chat, email, or phone — your choice.',
-          icon: '💬',
-        },
-        {
-          title: 'Scale Infinitely',
-          description: 'From startup to enterprise, our infrastructure grows with you. No limits, no compromises.',
-          icon: '🚀',
-        },
-      ],
-    },
+    'features': (() => {
+      const icons = getIndustryIcons(industry, 6);
+      return {
+        headline: 'Everything You Need',
+        subheadline: 'Powerful features designed to help you succeed.',
+        items: [
+          {
+            title: 'Lightning Fast',
+            description: 'Optimized for speed and performance. Every millisecond counts when it comes to user experience.',
+            icon: icons[0],
+          },
+          {
+            title: 'Secure by Default',
+            description: 'Enterprise-grade security built into every layer. Your data is always protected.',
+            icon: icons[1],
+          },
+          {
+            title: 'Easy Integration',
+            description: 'Connect with your existing tools in minutes. We support 100+ integrations out of the box.',
+            icon: icons[2],
+          },
+          {
+            title: 'Analytics Built-in',
+            description: 'Track everything that matters with real-time dashboards and custom reports.',
+            icon: icons[3],
+          },
+          {
+            title: '24/7 Support',
+            description: 'Our team is always available to help you succeed. Chat, email, or phone — your choice.',
+            icon: icons[4],
+          },
+          {
+            title: 'Scale Infinitely',
+            description: 'From startup to enterprise, our infrastructure grows with you. No limits, no compromises.',
+            icon: icons[5],
+          },
+        ],
+      };
+    })(),
     'pricing': {
       headline: 'Simple, Transparent Pricing',
       subheadline: 'Choose the plan that fits your needs. No hidden fees.',
@@ -244,10 +266,10 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
       headline: 'Meet Our Team',
       subheadline: 'The people behind the product.',
       items: [
-        { title: 'Alex Thompson', description: 'Founder & CEO', image: '', badge: '' },
-        { title: 'Maya Patel', description: 'Head of Design', image: '', badge: '' },
-        { title: 'James Wilson', description: 'Lead Engineer', image: '', badge: '' },
-        { title: 'Sofia Garcia', description: 'Head of Growth', image: '', badge: '' },
+        { title: 'Alex Thompson', description: 'Founder & CEO', image: resolvePicsumUrl(400, 400, 101), badge: '' },
+        { title: 'Maya Patel', description: 'Head of Design', image: resolvePicsumUrl(400, 400, 102), badge: '' },
+        { title: 'James Wilson', description: 'Lead Engineer', image: resolvePicsumUrl(400, 400, 103), badge: '' },
+        { title: 'Sofia Garcia', description: 'Head of Growth', image: resolvePicsumUrl(400, 400, 104), badge: '' },
       ],
     },
     'about': {
@@ -280,17 +302,17 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
         {
           title: 'Web Development',
           description: 'Custom websites and web applications built with modern technologies.',
-          icon: '💻',
+          icon: resolveIconForKeyword('web'),
         },
         {
           title: 'Mobile Apps',
           description: 'Native and cross-platform mobile applications for iOS and Android.',
-          icon: '📱',
+          icon: resolveIconForKeyword('mobile'),
         },
         {
           title: 'UI/UX Design',
           description: 'Beautiful, intuitive designs that delight users and drive conversions.',
-          icon: '🎨',
+          icon: resolveIconForKeyword('design'),
         },
       ],
     },
@@ -298,10 +320,10 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
       headline: 'What We Offer',
       subheadline: 'End-to-end solutions tailored to your needs.',
       items: [
-        { title: 'Strategy', description: 'Data-driven strategies that deliver measurable results.', icon: '🎯' },
-        { title: 'Design', description: 'Award-winning designs that captivate your audience.', icon: '✨' },
-        { title: 'Development', description: 'Robust, scalable solutions built with best practices.', icon: '⚙️' },
-        { title: 'Support', description: 'Ongoing maintenance and support to keep you running.', icon: '🛡️' },
+        { title: 'Strategy', description: 'Data-driven strategies that deliver measurable results.', icon: resolveIconForKeyword('analytics') },
+        { title: 'Design', description: 'Award-winning designs that captivate your audience.', icon: resolveIconForKeyword('design') },
+        { title: 'Development', description: 'Robust, scalable solutions built with best practices.', icon: resolveIconForKeyword('code') },
+        { title: 'Support', description: 'Ongoing maintenance and support to keep you running.', icon: resolveIconForKeyword('security') },
       ],
     },
     'how-it-works': {
@@ -311,19 +333,19 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
         {
           title: 'Sign Up',
           description: 'Create your free account in under 60 seconds. No credit card required.',
-          icon: '1',
+          icon: resolveIconForKeyword('sign up'),
         },
         {
           title: 'Configure',
           description:
             'Set up your workspace and invite your team. Our wizard guides you through everything.',
-          icon: '2',
+          icon: resolveIconForKeyword('settings'),
         },
         {
           title: 'Launch',
           description:
             'Go live and start seeing results immediately. We\'re here to help every step of the way.',
-          icon: '3',
+          icon: resolveIconForKeyword('launch'),
         },
       ],
     },
@@ -356,8 +378,20 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
 
 function generateHeroSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
+  // Use real fetched image or fall back to Picsum
+  const heroImage = ctx?.images?.[0];
+  const heroImgUrl = heroImage?.url || resolvePicsumUrl(1200, 600, sectionIndex + 1);
+  const heroImgAlt = heroImage?.alt || content.headline || 'Hero image';
+
+  // Use UIverse button templates if available
+  const primaryBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Started', { variant: 'primary', href: '#' });
+  const secondaryBtn = content.ctaSecondaryText
+    ? instantiateButton(ctx?.uiverse, content.ctaSecondaryText, { variant: 'secondary', href: '#' })
+    : '';
+
   const html = `<!-- Hero Section -->
 <section class="hero-section" id="hero">
   <div class="hero-bg-pattern"></div>
@@ -366,20 +400,13 @@ function generateHeroSection(
       <h1 class="hero-title">${content.headline || 'Welcome'}</h1>
       <p class="hero-subtitle">${content.subheadline || ''}</p>
       <div class="hero-actions">
-        <a href="#" class="btn btn-primary">${content.ctaText || 'Get Started'}</a>
-        ${content.ctaSecondaryText ? `<a href="#" class="btn btn-secondary">${content.ctaSecondaryText}</a>` : ''}
+        ${primaryBtn}
+        ${secondaryBtn}
       </div>
     </div>
     <div class="hero-visual animate-on-scroll" style="transition-delay: 200ms">
-      <div class="hero-image-placeholder">
-        <svg viewBox="0 0 600 400" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Hero illustration">
-          <rect width="600" height="400" rx="16" fill="var(--color-neutral-100)"/>
-          <rect x="40" y="40" width="520" height="280" rx="8" fill="var(--color-neutral-200)"/>
-          <circle cx="300" cy="180" r="60" fill="var(--color-primary)" opacity="0.2"/>
-          <path d="M280 180L310 160V200L280 180Z" fill="var(--color-primary)"/>
-          <rect x="100" y="340" width="120" height="12" rx="6" fill="var(--color-neutral-300)"/>
-          <rect x="240" y="340" width="80" height="12" rx="6" fill="var(--color-neutral-300)"/>
-        </svg>
+      <div class="hero-image-wrapper">
+        <img src="${heroImgUrl}" alt="${heroImgAlt}" class="hero-image" width="1200" height="600" loading="eager" decoding="async">
       </div>
     </div>
   </div>
@@ -446,7 +473,7 @@ function generateHeroSection(
   justify-content: center;
 }
 
-.hero-image-placeholder {
+.hero-image-wrapper {
   width: 100%;
   max-width: 600px;
   border-radius: var(--radius-lg);
@@ -454,10 +481,16 @@ function generateHeroSection(
   box-shadow: var(--shadow-xl);
 }
 
-.hero-image-placeholder svg {
+.hero-image {
   width: 100%;
   height: auto;
   display: block;
+  object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-image-wrapper:hover .hero-image {
+  transform: scale(1.03);
 }
 
 .hero-bg-pattern {
@@ -472,17 +505,31 @@ function generateHeroSection(
 
 function generateFeaturesSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const itemsHtml = items
     .map(
-      (item, i) => `
-        <div class="feature-card card animate-on-scroll" style="transition-delay: ${i * 100}ms">
-          <div class="feature-icon">${item.icon || '✦'}</div>
-          <h3 class="feature-title">${item.title}</h3>
-          <p class="feature-description">${item.description}</p>
-        </div>`
+      (item, i) => {
+        // Use fetched icon image if available
+        const fetchedIcon = ctx?.images?.[i];
+        const iconUrl = fetchedIcon?.isIcon ? fetchedIcon.url : (item.icon && item.icon.startsWith('http') ? item.icon : null);
+        const iconSrc = iconUrl
+          ? `<img src="${iconUrl}" alt="${item.title} icon" class="feature-icon-img" width="28" height="28" loading="lazy">`
+          : `<span class="feature-icon-emoji">${item.icon || '✦'}</span>`;
+
+        // Use UIverse card template if available
+        return instantiateCard(ctx?.uiverse, {
+          title: item.title,
+          description: item.description,
+          icon: iconUrl || item.icon || '✦',
+          index: i,
+        }, {
+          extraClasses: 'feature-card',
+          animateDelay: i * 100,
+        });
+      }
     )
     .join('\n');
 
@@ -538,7 +585,6 @@ ${itemsHtml}
 }
 
 .feature-icon {
-  font-size: 2rem;
   margin-bottom: var(--space-md);
   width: 56px;
   height: 56px;
@@ -549,6 +595,22 @@ ${itemsHtml}
   background: var(--color-primary);
   color: white;
   opacity: 0.9;
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.feature-card:hover .feature-icon {
+  transform: scale(1.1) rotate(-3deg);
+  box-shadow: 0 4px 12px rgba(var(--color-primary-rgb), 0.3);
+}
+
+.feature-icon-img {
+  width: 28px;
+  height: 28px;
+  filter: brightness(0) invert(1);
+}
+
+.feature-icon-emoji {
+  font-size: 1.5rem;
 }
 
 .feature-title {
@@ -571,13 +633,19 @@ ${itemsHtml}
 
 function generatePricingSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
   const cardsHtml = items
     .map((item, i) => {
       const isPopular = item.badge === 'Most Popular' || i === 1;
+      const ctaBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Started', {
+        variant: isPopular ? 'primary' : 'secondary',
+        href: item.link || '#',
+      });
+
       return `
         <div class="pricing-card card animate-on-scroll ${isPopular ? 'pricing-card--popular' : ''}" style="transition-delay: ${i * 100}ms">
           ${isPopular ? '<span class="pricing-badge badge">Most Popular</span>' : ''}
@@ -590,7 +658,7 @@ function generatePricingSection(
             <li>Feature included</li>
             ${isPopular ? '<li>Bonus feature</li><li>Priority support</li>' : ''}
           </ul>
-          <a href="${item.link || '#'}" class="btn ${isPopular ? 'btn-primary' : 'btn-secondary'}">${content.ctaText || 'Get Started'}</a>
+          ${ctaBtn}
         </div>`;
     })
     .join('\n');
@@ -718,21 +786,29 @@ ${cardsHtml}
 
 function generateTestimonialsSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
   const cardsHtml = items
     .map(
-      (item, i) => `
+      (item, i) => {
+        // Use fetched avatar or fall back to Picsum
+        const fetchedAvatar = ctx?.images?.[i];
+        const avatarUrl = fetchedAvatar?.url || item.image || resolvePicsumUrl(80, 80, 200 + i);
+        return `
         <div class="testimonial-card card animate-on-scroll" style="transition-delay: ${i * 100}ms">
-          <div class="testimonial-avatar">${item.title.charAt(0)}</div>
+          <div class="testimonial-avatar">
+            <img src="${avatarUrl}" alt="${item.title}" class="testimonial-avatar-img" width="48" height="48" loading="lazy">
+          </div>
           <blockquote class="testimonial-quote">${item.description}</blockquote>
           <div class="testimonial-author">
             <strong>${item.title}</strong>
             ${item.badge ? `<span class="testimonial-role">${item.badge}</span>` : ''}
           </div>
-        </div>`
+        </div>`;
+      }
     )
     .join('\n');
 
@@ -790,14 +866,16 @@ ${cardsHtml}
   width: 48px;
   height: 48px;
   border-radius: var(--radius-full);
-  background: var(--color-primary);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: var(--fs-h4);
+  overflow: hidden;
   margin-bottom: var(--space-md);
+  border: 2px solid var(--color-neutral-200);
+}
+
+.testimonial-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .testimonial-quote {
@@ -826,8 +904,14 @@ ${cardsHtml}
 
 function generateCtaSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
+  const primaryBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Started', { variant: 'primary', href: '#', extraClasses: 'btn-lg' });
+  const secondaryBtn = content.ctaSecondaryText
+    ? instantiateButton(ctx?.uiverse, content.ctaSecondaryText, { variant: 'secondary', href: '#', extraClasses: 'btn-lg' })
+    : '';
+
   const html = `<!-- CTA Section -->
 <section class="cta-section section" id="cta">
   <div class="container">
@@ -835,8 +919,8 @@ function generateCtaSection(
       <h2 class="cta-title">${content.headline || 'Ready to Start?'}</h2>
       <p class="cta-subtitle">${content.subheadline || ''}</p>
       <div class="cta-actions">
-        <a href="#" class="btn btn-primary btn-lg">${content.ctaText || 'Get Started'}</a>
-        ${content.ctaSecondaryText ? `<a href="#" class="btn btn-secondary btn-lg">${content.ctaSecondaryText}</a>` : ''}
+        ${primaryBtn}
+        ${secondaryBtn}
       </div>
     </div>
   </div>
@@ -902,7 +986,8 @@ function generateCtaSection(
 
 function generateFaqSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
@@ -1029,8 +1114,14 @@ document.querySelectorAll('.faq-question').forEach(btn => {
 
 function generateContactFormSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
+  // Use UIverse input templates if available
+  const nameInput = instantiateInput(ctx?.uiverse, { name: 'name', label: 'Full Name', placeholder: 'John Doe', required: true, id: 'name', type: 'text' });
+  const emailInput = instantiateInput(ctx?.uiverse, { name: 'email', label: 'Email', placeholder: 'john@example.com', required: true, id: 'email', type: 'email' });
+  const submitBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Send Message', { variant: 'primary' });
+
   const html = `<!-- Contact Form Section -->
 <section class="contact-section section" id="contact">
   <div class="container">
@@ -1040,19 +1131,17 @@ function generateContactFormSection(
     </div>
     <form class="contact-form animate-on-scroll" novalidate>
       <div class="form-group">
-        <label for="name" class="form-label">Full Name</label>
-        <input type="text" id="name" name="name" class="form-input" placeholder="John Doe" required aria-required="true">
+        ${nameInput}
       </div>
       <div class="form-group">
-        <label for="email" class="form-label">Email</label>
-        <input type="email" id="email" name="email" class="form-input" placeholder="john@example.com" required aria-required="true">
+        ${emailInput}
       </div>
       <div class="form-group form-group--full">
         <label for="message" class="form-label">Message</label>
         <textarea id="message" name="message" class="form-input form-textarea" placeholder="How can we help?" rows="5" required aria-required="true"></textarea>
       </div>
       <div class="form-group form-group--full">
-        <button type="submit" class="btn btn-primary">${content.ctaText || 'Send Message'}</button>
+        ${submitBtn}
       </div>
     </form>
   </div>
@@ -1122,8 +1211,12 @@ function generateContactFormSection(
 
 function generateNewsletterSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
+  const emailInput = instantiateInput(ctx?.uiverse, { name: 'newsletter-email', placeholder: 'Enter your email', required: true, type: 'email' });
+  const submitBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Subscribe', { variant: 'primary' });
+
   const html = `<!-- Newsletter Section -->
 <section class="newsletter-section section" id="newsletter">
   <div class="container">
@@ -1131,8 +1224,8 @@ function generateNewsletterSection(
       <h2 class="newsletter-title">${content.headline || 'Stay Updated'}</h2>
       <p class="newsletter-subtitle">${content.subheadline || ''}</p>
       <form class="newsletter-form" action="#" method="post">
-        <input type="email" class="form-input newsletter-input" placeholder="Enter your email" required aria-label="Email address">
-        <button type="submit" class="btn btn-primary">${content.ctaText || 'Subscribe'}</button>
+        ${emailInput}
+        ${submitBtn}
       </form>
     </div>
   </div>
@@ -1184,7 +1277,8 @@ function generateNewsletterSection(
 
 function generateFooterSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const html = `<!-- Footer -->
 <footer class="site-footer" id="footer">
@@ -1303,8 +1397,11 @@ function generateFooterSection(
 
 function generateNavigationSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
+  const navCta = instantiateButton(ctx?.uiverse, 'Get Started', { variant: 'primary', href: '#', extraClasses: 'nav-cta' });
+
   const html = `<!-- Navigation -->
 <header class="site-header" id="navbar">
   <nav class="navbar" role="navigation" aria-label="Main navigation">
@@ -1322,7 +1419,7 @@ function generateNavigationSection(
         <a href="#pricing" class="nav-link" role="menuitem">Pricing</a>
         <a href="#testimonials" class="nav-link" role="menuitem">Testimonials</a>
         <a href="#contact" class="nav-link" role="menuitem">Contact</a>
-        <a href="#" class="btn btn-primary nav-cta">Get Started</a>
+        ${navCta}
       </div>
     </div>
   </nav>
@@ -1492,17 +1589,23 @@ document.querySelectorAll('a[href^="#"]').forEach(link => {
 
 function generateHowItWorksSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const stepsHtml = items
     .map(
-      (item, i) => `
+      (item, i) => {
+        const iconContent = item.icon && item.icon.startsWith('http')
+          ? `<img src="${item.icon}" alt="${item.title} icon" class="step-icon-img" width="28" height="28" loading="lazy">`
+          : `<span>${item.icon || i + 1}</span>`;
+        return `
         <div class="step-card animate-on-scroll" style="transition-delay: ${i * 150}ms">
-          <div class="step-number">${item.icon || i + 1}</div>
+          <div class="step-number">${iconContent}</div>
           <h3 class="step-title">${item.title}</h3>
           <p class="step-description">${item.description}</p>
-        </div>`
+        </div>`;
+      }
     )
     .join('\n');
 
@@ -1556,6 +1659,18 @@ ${stepsHtml}
   align-items: center;
   justify-content: center;
   margin: 0 auto var(--space-lg);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.step-card:hover .step-number {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(var(--color-primary-rgb), 0.3);
+}
+
+.step-icon-img {
+  width: 28px;
+  height: 28px;
+  filter: brightness(0) invert(1);
 }
 
 .step-title {
@@ -1577,7 +1692,8 @@ ${stepsHtml}
 
 function generateClientsSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const logosHtml = items.map((item) => `
@@ -1634,7 +1750,8 @@ ${logosHtml}
 
 function generateStatsSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const statsHtml = items
@@ -1698,17 +1815,26 @@ ${statsHtml}
 
 function generateServicesSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const cardsHtml = items
     .map(
-      (item, i) => `
-        <div class="service-card card animate-on-scroll" style="transition-delay: ${i * 100}ms">
-          <div class="service-icon">${item.icon || '✦'}</div>
-          <h3 class="service-title">${item.title}</h3>
-          <p class="service-description">${item.description}</p>
-        </div>`
+      (item, i) => {
+        const fetchedIcon = ctx?.images?.[i];
+        const iconUrl = fetchedIcon?.isIcon ? fetchedIcon.url : (item.icon && item.icon.startsWith('http') ? item.icon : null);
+
+        return instantiateCard(ctx?.uiverse, {
+          title: item.title,
+          description: item.description,
+          icon: iconUrl || item.icon || '✦',
+          index: i,
+        }, {
+          extraClasses: 'service-card',
+          animateDelay: i * 100,
+        });
+      }
     )
     .join('\n');
 
@@ -1764,8 +1890,31 @@ ${cardsHtml}
 }
 
 .service-icon {
-  font-size: 2rem;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: white;
   margin-bottom: var(--space-md);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.service-card:hover .service-icon {
+  transform: scale(1.1) rotate(-3deg);
+  box-shadow: 0 4px 12px rgba(var(--color-primary-rgb), 0.3);
+}
+
+.service-icon-img {
+  width: 28px;
+  height: 28px;
+  filter: brightness(0) invert(1);
+}
+
+.service-icon-emoji {
+  font-size: 1.5rem;
 }
 
 .service-title {
@@ -1787,17 +1936,26 @@ ${cardsHtml}
 
 function generateTeamSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const cardsHtml = items
     .map(
-      (item, i) => `
+      (item, i) => {
+        // Use fetched portrait or fall back
+        const fetchedAvatar = ctx?.images?.[i];
+        const avatarUrl = fetchedAvatar?.url || item.image;
+        const avatarHtml = avatarUrl
+          ? `<img src="${avatarUrl}" alt="${item.title}" class="team-avatar-img" width="80" height="80" loading="lazy">`
+          : `<div class="team-avatar-fallback">${item.title.charAt(0)}</div>`;
+        return `
         <div class="team-card card animate-on-scroll" style="transition-delay: ${i * 100}ms">
-          <div class="team-avatar">${item.title.charAt(0)}</div>
+          <div class="team-avatar">${avatarHtml}</div>
           <h3 class="team-name">${item.title}</h3>
           <p class="team-role">${item.description}</p>
-        </div>`
+        </div>`;
+      }
     )
     .join('\n');
 
@@ -1850,6 +2008,26 @@ ${cardsHtml}
   width: 80px;
   height: 80px;
   border-radius: var(--radius-full);
+  overflow: hidden;
+  margin: 0 auto var(--space-md);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.team-card:hover .team-avatar {
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.team-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.team-avatar-fallback {
+  width: 100%;
+  height: 100%;
   background: var(--color-primary);
   color: white;
   font-size: var(--fs-h2);
@@ -1857,7 +2035,6 @@ ${cardsHtml}
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto var(--space-md);
 }
 
 .team-name {
@@ -1878,25 +2055,30 @@ ${cardsHtml}
 
 function generateAboutSection(
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
+  // Use fetched image or fall back
+  const aboutImage = ctx?.images?.[0];
+  const aboutImgUrl = aboutImage?.url || resolvePicsumUrl(800, 500, sectionIndex + 50);
+  const aboutImgAlt = aboutImage?.alt || content.headline || 'About our company';
+  const ctaBtn = content.ctaText
+    ? instantiateButton(ctx?.uiverse, content.ctaText, { variant: 'secondary', href: '#' })
+    : '';
+
   const html = `<!-- About Section -->
 <section class="about-section section" id="about">
   <div class="container">
     <div class="about-grid">
       <div class="about-image animate-from-left">
-        <div class="about-image-placeholder">
-          <svg viewBox="0 0 500 400" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="About illustration">
-            <rect width="500" height="400" rx="16" fill="var(--color-neutral-100)"/>
-            <rect x="30" y="30" width="440" height="340" rx="8" fill="var(--color-neutral-200)"/>
-            <circle cx="250" cy="200" r="80" fill="var(--color-primary)" opacity="0.15"/>
-          </svg>
+        <div class="about-image-wrapper">
+          <img src="${aboutImgUrl}" alt="${aboutImgAlt}" class="about-img" width="800" height="500" loading="lazy" decoding="async">
         </div>
       </div>
       <div class="about-content animate-from-right">
         <h2 class="section-title">${content.headline || 'About Us'}</h2>
         <p class="about-text">${content.description || ''}</p>
-        ${content.ctaText ? `<a href="#" class="btn btn-secondary">${content.ctaText}</a>` : ''}
+        ${ctaBtn}
       </div>
     </div>
   </div>
@@ -1920,16 +2102,22 @@ function generateAboutSection(
   }
 }
 
-.about-image-placeholder {
+.about-image-wrapper {
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-lg);
 }
 
-.about-image-placeholder svg {
+.about-img {
   width: 100%;
   height: auto;
   display: block;
+  object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.about-image-wrapper:hover .about-img {
+  transform: scale(1.03);
 }
 
 .about-text {
@@ -1948,7 +2136,8 @@ function generateAboutSection(
 function generateGenericSection(
   sectionType: string,
   content: SectionContent,
-  sectionIndex: number
+  sectionIndex: number,
+  ctx?: SectionContext
 ): { html: string; css: string; js: string } {
   const html = `<!-- ${sectionType} Section -->
 <section class="${sectionType}-section section" id="${sectionType}">
@@ -1991,7 +2180,13 @@ function generateGenericSection(
 
 // ─── Section Generator Dispatcher ───────────────────────────────────────────
 
-type SectionGenerator = (content: SectionContent, sectionIndex: number) => { html: string; css: string; js: string };
+/** Context passed to every section generator */
+interface SectionContext {
+  uiverse: UIverseComponentMap | null;
+  images: ResolvedImage[] | null;
+}
+
+type SectionGenerator = (content: SectionContent, sectionIndex: number, ctx?: SectionContext) => { html: string; css: string; js: string };
 
 const SECTION_GENERATORS: Record<string, SectionGenerator> = {
   'hero': generateHeroSection,
@@ -2024,6 +2219,7 @@ export function generateSection(input: GenerateSectionInput): GenerateSectionOut
   const sectionType = input.sectionType.toLowerCase().trim();
   const sectionIndex = input.sectionIndex || 0;
   const tokens = input.designTokens;
+  const uiverse = input.uiverseComponents || null;
 
   // Get required components for this section
   const requiredComponents = SECTION_REQUIREMENTS[sectionType] || [];
@@ -2032,14 +2228,69 @@ export function generateSection(input: GenerateSectionInput): GenerateSectionOut
   // Get content (user-provided or defaults)
   const content = input.content || getDefaultContent(sectionType, (tokens.industry as string) || 'technology');
 
+  // Build section context with UIverse components and resolved images
+  const sectionImages = input.imageData?.[sectionType] || null;
+  const ctx: SectionContext = {
+    uiverse,
+    images: sectionImages,
+  };
+
   // Generate the section
-  const generator = SECTION_GENERATORS[sectionType] || ((c: SectionContent, i: number) => generateGenericSection(sectionType, c, i));
-  const result = generator(content, sectionIndex);
+  const generator = SECTION_GENERATORS[sectionType] || ((c: SectionContent, i: number, _ctx?: SectionContext) => generateGenericSection(sectionType, c, i, _ctx));
+  const result = generator(content, sectionIndex, ctx);
+
+  // ─── UIverse Component CSS Injection ─────────────────────────────────
+  // If UIverse components are available, append their CSS for categories
+  // used by this section. This provides the actual button/card/input styles
+  // that the HTML class references (e.g., .btn, .card, .input-field).
+  let uiverseCss = '';
+  const uiverseSources: string[] = [];
+
+  if (uiverse) {
+    // Map section component requirements to UIverse categories
+    const categoryMapping: Record<string, string> = {
+      'button-primary': 'buttons',
+      'button-secondary': 'buttons',
+      'card': 'cards',
+      'input': 'inputs',
+      'checkbox': 'checkboxes',
+      'toggle': 'toggles',
+      'radio': 'radios',
+      'badge': 'badges',
+      'navigation': 'navigation',
+      'loader': 'loaders',
+      'tooltip': 'tooltips',
+    };
+
+    const injectedCategories = new Set<string>();
+
+    for (const req of requiredComponents) {
+      const uiverseCategory = categoryMapping[req];
+      if (uiverseCategory && !injectedCategories.has(uiverseCategory) && hasUIverseComponent(uiverse, uiverseCategory)) {
+        const css = getUIverseCss(uiverse, uiverseCategory);
+        if (css) {
+          uiverseCss += `\n${css}\n`;
+          injectedCategories.add(uiverseCategory);
+          uiverseSources.push(`${uiverseCategory} (UIverse)`);
+        }
+      }
+    }
+
+    // Append UIverse keyframes if this section uses animated components
+    if (injectedCategories.size > 0 && uiverse.combinedKeyframes) {
+      uiverseCss += `\n${uiverse.combinedKeyframes}\n`;
+    }
+  }
+
+  const componentSource = uiverseSources.length > 0
+    ? `UIverse components: ${uiverseSources.join(', ')}`
+    : 'Built-in components';
 
   const summary = `## Section Generated: ${sectionType}
 
 **Type:** ${sectionType}
 **Components used:** ${componentsUsed.length > 0 ? componentsUsed.join(', ') : 'none (standalone section)'}
+**Component source:** ${componentSource}
 **Framework:** ${input.framework}
 
 The section includes:
@@ -2052,7 +2303,7 @@ The section includes:
 
   return {
     html: result.html,
-    css: result.css,
+    css: result.css + uiverseCss,
     js: result.js,
     sectionId: sectionType,
     componentsUsed,

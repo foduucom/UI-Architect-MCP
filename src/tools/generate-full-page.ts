@@ -10,6 +10,7 @@
 
 import type { DesignTokens, Framework } from '../engine/types.js';
 import { generateSection, type GenerateSectionOutput } from './generate-section.js';
+import type { UIverseComponentMap } from '../engine/uiverse-adapter.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,10 @@ export interface GenerateFullPageInput {
   industry?: string;
   includeNavigation?: boolean;
   includeFooter?: boolean;
+  /** Adapted UIverse components — passed through to each section generator */
+  uiverseComponents?: UIverseComponentMap | null;
+  /** Resolved images per section type from fetchImages — passed through to section generators */
+  imageData?: Record<string, import('./fetch-images.js').ResolvedImage[]> | null;
 }
 
 export interface GeneratedPage {
@@ -523,6 +528,8 @@ export function generateFullPage(
           designTokens: input.designTokens,
           content: undefined, // Content would come from page data
           sectionIndex: i,
+          uiverseComponents: input.uiverseComponents || null,
+          imageData: input.imageData || null,
         });
 
         sectionOutputs.push(sectionOutput);
