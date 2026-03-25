@@ -1340,9 +1340,9 @@ Contributions are welcome. The project is structured so you can add new componen
 
 **To add a new image source:**
 
-1. Add a fetcher function in `src/tools/fetch-images.ts` (follow the Unsplash/Pexels pattern)
-2. Add it to the `resolvePhotos` fallback chain
-3. Add the source type to `ResolvedImage.source`
+1. Add a fetcher function in `src/tools/fetch-images.ts` (follow the Unsplash/Pexels pattern).
+2. Add it to the `resolvePhotos` fallback chain.
+3. Add the source type to `ResolvedImage.source`.
 
 ***
 
