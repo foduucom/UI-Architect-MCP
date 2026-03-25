@@ -124,6 +124,27 @@ const INDUSTRY_PROFILES: Record<Industry, IndustryColorProfile> = {
     recommendedTheme: 'light',
     avoid: ['#EC4899', '#F472B6', '#667eea', '#764ba2'],
   },
+  fitness: {
+    primaries: ['#E63946', '#DC2626', '#F97316', '#EA580C'],
+    secondaries: ['#1D4ED8', '#2563EB', '#0D9488', '#059669'],
+    accents: ['#FBBF24', '#F59E0B', '#22D3EE', '#06B6D4'],
+    recommendedTheme: 'dark',
+    avoid: ['#EC4899', '#F472B6', '#A78BFA', '#C084FC'],
+  },
+  coaching: {
+    primaries: ['#7C3AED', '#6D28D9', '#2563EB', '#1D4ED8'],
+    secondaries: ['#059669', '#0D9488', '#0891B2', '#0EA5E9'],
+    accents: ['#F59E0B', '#FBBF24', '#F97316', '#FB923C'],
+    recommendedTheme: 'light',
+    avoid: ['#EF4444', '#DC2626', '#000000', '#111111'],
+  },
+  consulting: {
+    primaries: ['#1E3A5F', '#1E40AF', '#0A2540', '#1B365D'],
+    secondaries: ['#059669', '#0891B2', '#2D6A4F', '#1B7A4A'],
+    accents: ['#F59E0B', '#D4A843', '#0EA5E9', '#22D3EE'],
+    recommendedTheme: 'light',
+    avoid: ['#EC4899', '#F472B6', '#667eea', '#764ba2'],
+  },
 };
 
 // ─── Color Utility Functions ─────────────────────────────────────────────────

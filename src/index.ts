@@ -28,6 +28,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import { analyzeProject } from './tools/analyze-project.js';
 import { planArchitecture } from './tools/plan-architecture.js';
@@ -48,6 +50,56 @@ import { seoFix } from './tools/seo-fix.js';
 import type { DesignTokens, Framework } from './engine/types.js';
 import type { ProjectScope, AnalyzeProjectOutput } from './tools/analyze-project.js';
 import type { ArchitecturePlan } from './tools/plan-architecture.js';
+
+// ─── Disk Write Utility ─────────────────────────────────────────────────────
+
+interface WriteResult {
+  filesWritten: number;
+  totalBytes: number;
+  errors: string[];
+  fileList: Array<{ path: string; size: number }>;
+}
+
+function writeFilesToDisk(
+  outputDir: string,
+  files: Array<{ path: string; content: string }>
+): WriteResult {
+  const result: WriteResult = {
+    filesWritten: 0,
+    totalBytes: 0,
+    errors: [],
+    fileList: [],
+  };
+
+  if (!path.isAbsolute(outputDir)) {
+    result.errors.push(`outputDir must be an absolute path. Got: "${outputDir}"`);
+    return result;
+  }
+
+  try {
+    fs.mkdirSync(outputDir, { recursive: true });
+  } catch (err) {
+    result.errors.push(`Failed to create output directory: ${String(err)}`);
+    return result;
+  }
+
+  for (const file of files) {
+    const fullPath = path.join(outputDir, file.path);
+    const dir = path.dirname(fullPath);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(fullPath, file.content, 'utf-8');
+      const size = Buffer.byteLength(file.content, 'utf-8');
+      result.filesWritten++;
+      result.totalBytes += size;
+      result.fileList.push({ path: file.path, size });
+    } catch (err) {
+      result.errors.push(`Failed to write ${file.path}: ${String(err)}`);
+    }
+  }
+
+  return result;
+}
 
 // ─── Server Initialization ───────────────────────────────────────────────────
 
@@ -92,8 +144,14 @@ IMPORTANT: Always call this FIRST before any other tool. It sets up the entire p
     pageCount: z.number().optional().describe(
       'Number of pages to generate. Default: auto-detected from project type'
     ),
+    brandName: z.string().optional().describe(
+      'Brand/company name. Displayed in navigation, footer, and content. Example: "Ember & Brew"'
+    ),
+    pageNames: z.array(z.string()).optional().describe(
+      'Explicit page names to override auto-detected pages. Example: ["Home", "About", "Menu", "Contact"]'
+    ),
   },
-  async ({ description, audience, industry, framework, pageCount }) => {
+  async ({ description, audience, industry, framework, pageCount, brandName, pageNames }) => {
     try {
       const result = analyzeProject({
         description,
@@ -101,6 +159,8 @@ IMPORTANT: Always call this FIRST before any other tool. It sets up the entire p
         industry,
         framework,
         pageCount,
+        brandName,
+        pageNames,
       });
 
       // Store scope for subsequent tool calls
@@ -397,8 +457,13 @@ IMPORTANT: Run design_theme first so colors match your palette.`,
         };
       }
 
+      // Resolve 'auto' theme using the design tokens from design_theme
+      const resolvedTheme: 'light' | 'dark' = theme === 'auto'
+        ? (currentTokens.themeMode === 'dark' ? 'dark' : 'light')
+        : (theme as 'light' | 'dark');
+
       const result = generateBackgroundTool(
-        { industry, theme: theme as 'light' | 'dark', style: style as any },
+        { industry, theme: resolvedTheme, style: style as any },
         currentTokens.colors
       );
 
@@ -444,8 +509,11 @@ IMPORTANT: Run design_theme first so the CSS variables file is populated with re
     projectName: z.string().optional().describe(
       'Project name for package.json and README. Default: "ui-architect-project"'
     ),
+    outputDir: z.string().optional().describe(
+      'Absolute path to write project files to disk. If provided, files are written and a summary is returned instead of dumping all file contents. Example: "/home/user/projects/my-site"'
+    ),
   },
-  async ({ framework, projectName }) => {
+  async ({ framework, projectName, outputDir }) => {
     try {
       if (!currentTokens) {
         return {
@@ -466,6 +534,38 @@ IMPORTANT: Run design_theme first so the CSS variables file is populated with re
         projectName,
       });
 
+      // If outputDir provided, write files to disk and return summary
+      if (outputDir) {
+        const writeResult = writeFilesToDisk(
+          outputDir,
+          result.files.map(f => ({ path: f.path, content: f.content }))
+        );
+
+        let output = result.summary;
+        output += `\n\n### Files Written to \`${outputDir}\`\n`;
+        output += `**${writeResult.filesWritten} files** written (${(writeResult.totalBytes / 1024).toFixed(1)} KB total)\n\n`;
+
+        for (const f of writeResult.fileList) {
+          output += `- \`${f.path}\` (${(f.size / 1024).toFixed(1)} KB)\n`;
+        }
+
+        if (writeResult.errors.length > 0) {
+          output += `\n### Errors\n`;
+          for (const err of writeResult.errors) {
+            output += `- ${err}\n`;
+          }
+        }
+
+        output += `\n\n### Setup Commands\n`;
+        output += `\`\`\`bash\ncd ${outputDir}\n${result.installCommand}\n${result.devCommand}\n\`\`\``;
+        output += `\n\n---\n\n**Next step:** Call \`generate_full_page\` with \`outputDir\` to generate and write all page content.`;
+
+        return {
+          content: [{ type: 'text' as const, text: output }],
+        };
+      }
+
+      // Otherwise, return file contents as text (existing behavior)
       let output = result.summary;
 
       output += '\n\n### Generated Files\n';
@@ -524,6 +624,8 @@ Assembles all page sections (hero, features, pricing, testimonials, footer, etc.
 For vanilla HTML: generates complete HTML documents per page.
 For frameworks: generates framework-specific page components.
 
+Use 'pageSlug' to generate one page at a time (e.g. "index", "about") to avoid output truncation on multi-page sites.
+
 IMPORTANT: Run design_theme first. Optionally run scaffold_project to get the project structure.`,
   {
     framework: z.string().describe(
@@ -538,8 +640,14 @@ IMPORTANT: Run design_theme first. Optionally run scaffold_project to get the pr
     includeFooter: z.boolean().optional().describe(
       'Auto-include footer on every page. Default: true'
     ),
+    outputDir: z.string().optional().describe(
+      'Absolute path to write generated page files to disk. If provided, pages are written as separate files and a compact summary is returned. Example: "/home/user/projects/my-site"'
+    ),
+    pageSlug: z.string().optional().describe(
+      'Generate only one page by slug (e.g. "index", "about"). Omit to generate all pages. Use this to prevent output truncation.'
+    ),
   },
-  async ({ framework, industry, includeNavigation, includeFooter }) => {
+  async ({ framework, industry, includeNavigation, includeFooter, outputDir, pageSlug }) => {
     try {
       if (!currentTokens) {
         return {
@@ -551,17 +659,90 @@ IMPORTANT: Run design_theme first. Optionally run scaffold_project to get the pr
         };
       }
 
-      const pages = currentScope?.pages || [{ name: 'Home', slug: 'index', sections: ['hero', 'features', 'cta'], isHomepage: true }];
+      const allPages = currentScope?.pages || [{ name: 'Home', slug: 'index', sections: ['hero', 'features', 'cta'], isHomepage: true }];
+
+      const pagesToGenerate = pageSlug
+        ? allPages.filter(p => p.slug === pageSlug)
+        : allPages;
+
+      if (pageSlug && pagesToGenerate.length === 0) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `No page with slug "${pageSlug}". Available: ${allPages.map(p => p.slug).join(', ')}`,
+          }],
+          isError: true,
+        };
+      }
 
       const result = generateFullPage({
-        pages,
+        allPages,
+        pagesToGenerate,
         framework,
         designTokens: currentTokens,
         industry: industry || currentScope?.industry,
         includeNavigation: includeNavigation !== false,
         includeFooter: includeFooter !== false,
+        brandName: currentScope?.brandName,
       });
 
+      // If outputDir provided, write files to disk and return summary
+      if (outputDir) {
+        const files: Array<{ path: string; content: string }> = [];
+
+        for (const page of result.pages) {
+          // HTML files at project root for vanilla HTML, in pages/ for frameworks
+          const htmlFileName = framework === 'html'
+            ? (page.slug === 'index' ? 'index.html' : `${page.slug}.html`)
+            : `pages/${page.slug}.${['react', 'nextjs'].includes(framework) ? 'jsx' : framework === 'vue' || framework === 'nuxt' ? 'vue' : framework === 'svelte' ? 'svelte' : 'html'}`;
+          files.push({ path: htmlFileName, content: page.html });
+          if (page.css) {
+            files.push({ path: `assets/css/${page.slug}.css`, content: page.css });
+          }
+          if (page.js) {
+            files.push({ path: `assets/js/${page.slug}.js`, content: page.js });
+          }
+        }
+
+        // Shared files
+        if (result.sharedFiles) {
+          for (const sf of result.sharedFiles) {
+            const dir = sf.filename.endsWith('.js') ? 'assets/js' : 'assets/css';
+            files.push({ path: `${dir}/${sf.filename}`, content: sf.content });
+          }
+        }
+        if (result.sharedCss) {
+          files.push({ path: 'assets/css/shared-keyframes.css', content: result.sharedCss });
+        }
+        if (result.sharedJs) {
+          files.push({ path: 'assets/js/shared.js', content: result.sharedJs });
+        }
+
+        const writeResult = writeFilesToDisk(outputDir, files);
+
+        let output = result.summary;
+        output += `\n\n### Files Written to \`${outputDir}\`\n`;
+        output += `**${writeResult.filesWritten} files** written (${(writeResult.totalBytes / 1024).toFixed(1)} KB total)\n\n`;
+
+        for (const f of writeResult.fileList) {
+          output += `- \`${f.path}\` (${(f.size / 1024).toFixed(1)} KB)\n`;
+        }
+
+        if (writeResult.errors.length > 0) {
+          output += `\n### Errors\n`;
+          for (const err of writeResult.errors) {
+            output += `- ${err}\n`;
+          }
+        }
+
+        output += `\n\n---\n\n**Next step:** Call \`review_output\` to run the QA checklist.`;
+
+        return {
+          content: [{ type: 'text' as const, text: output }],
+        };
+      }
+
+      // Otherwise, return file contents as text (existing behavior)
       let output = result.summary;
 
       // Output each page
@@ -588,12 +769,29 @@ IMPORTANT: Run design_theme first. Optionally run scaffold_project to get the pr
         }
       }
 
-      if (result.sharedCss) {
-        output += `\n\n---\n\n## Shared CSS (animations + keyframes)\n\`\`\`css\n${result.sharedCss}\n\`\`\`\n`;
-      }
+      // Only include shared files when generating all pages (not in single-page mode)
+      if (!pageSlug) {
+        // Output shared files (reset.css, variables.css, components.css, animations.css, animations.js)
+        if (result.sharedFiles && result.sharedFiles.length > 0) {
+          output += `\n\n---\n\n## Shared Files\n`;
+          output += `These files are referenced by all pages. Write them once to \`assets/css/\` or \`assets/js/\`.\n`;
 
-      if (result.sharedJs) {
-        output += `\n\n## Shared JavaScript\n\`\`\`javascript\n${result.sharedJs}\n\`\`\`\n`;
+          for (const file of result.sharedFiles) {
+            const lang = file.filename.endsWith('.js') ? 'javascript' : 'css';
+            const dir = file.filename.endsWith('.js') ? 'assets/js' : 'assets/css';
+            output += `\n### \`${dir}/${file.filename}\`\n\`\`\`${lang}\n${file.content}\n\`\`\`\n`;
+          }
+        }
+
+        if (result.sharedCss) {
+          output += `\n\n---\n\n## Additional Shared CSS (extracted keyframes)\n\`\`\`css\n${result.sharedCss}\n\`\`\`\n`;
+        }
+
+        if (result.sharedJs) {
+          output += `\n\n## Additional Shared JavaScript\n\`\`\`javascript\n${result.sharedJs}\n\`\`\`\n`;
+        }
+      } else {
+        output += `\n\n> **Note:** Shared files (reset.css, variables.css, etc.) are omitted in single-page mode. Generate without \`pageSlug\` to get them, or use \`outputDir\` to write everything to disk.`;
       }
 
       output += `\n\n---\n\n**Next step:** Call \`review_output\` to run the QA checklist and catch any issues before delivery.`;
@@ -633,6 +831,12 @@ Call this LAST to validate the generated output before delivering to the user.`,
     code: z.string().describe(
       'The generated HTML/CSS/JS code to review. Pass the complete output from generate_full_page or generate_section.'
     ),
+    css: z.string().optional().describe(
+      'External CSS code to include in the review. Pass if CSS is in a separate file from the HTML.'
+    ),
+    js: z.string().optional().describe(
+      'External JS code to include in the review. Pass if JS is in a separate file from the HTML.'
+    ),
     industry: z.string().optional().describe(
       'Industry context for checking business-appropriate design choices.'
     ),
@@ -641,10 +845,12 @@ Call this LAST to validate the generated output before delivering to the user.`,
     checkConsistency: z.boolean().optional().describe('Run design consistency checks. Default: true'),
     checkAntiPatterns: z.boolean().optional().describe('Run AI anti-pattern detection. Default: true'),
   },
-  async ({ code, industry, checkAccessibility, checkAnimations, checkConsistency, checkAntiPatterns }) => {
+  async ({ code, css, js, industry, checkAccessibility, checkAnimations, checkConsistency, checkAntiPatterns }) => {
     try {
       const result = reviewOutput({
         code,
+        css: css || undefined,
+        js: js || undefined,
         industry: industry || currentScope?.industry,
         checkAccessibility: checkAccessibility !== false,
         checkAnimations: checkAnimations !== false,
@@ -728,14 +934,22 @@ Categories: buttons, cards, loaders, inputs, checkboxes, toggles, radio-buttons,
     searchQuery: z.string().optional().describe(
       'Optional keyword filter. Examples: "neon", "glow", "gradient", "bounce", "3d"'
     ),
+    industry: z.string().optional().describe(
+      'Industry for style-aware filtering. Filters out incompatible components (e.g., brutalist for luxury). Values: luxury, restaurant, food, corporate, finance, healthcare, education, technology, startup, gaming, creative, ecommerce'
+    ),
+    tone: z.string().optional().describe(
+      'Tone for style-aware filtering. Values: elegant, minimal, bold, playful, modern, warm'
+    ),
   },
-  async ({ categories, preferAnimated, maxPerCategory, searchQuery }) => {
+  async ({ categories, preferAnimated, maxPerCategory, searchQuery, industry, tone }) => {
     try {
       const result = await exploreComponents({
         categories,
         preferAnimated: preferAnimated !== false,
         maxPerCategory: maxPerCategory || 5,
         searchQuery,
+        industry: industry || currentScope?.industry,
+        tone: tone || currentScope?.tone,
       });
 
       let output = result.summary;
@@ -794,6 +1008,12 @@ Call this AFTER generate_full_page, BEFORE review_output.`,
     code: z.string().describe(
       'The generated HTML code to audit. Pass the complete page HTML from generate_full_page.'
     ),
+    css: z.string().optional().describe(
+      'External CSS code to include in the audit. Pass if CSS is in a separate file from the HTML.'
+    ),
+    js: z.string().optional().describe(
+      'External JS code to include in the audit. Pass if JS is in a separate file from the HTML.'
+    ),
     industry: z.string().optional().describe(
       'Industry context for SEO recommendations (e.g., "fintech", "ecommerce", "healthcare")'
     ),
@@ -807,10 +1027,12 @@ Call this AFTER generate_full_page, BEFORE review_output.`,
       'Page name for the audit report'
     ),
   },
-  async ({ code, industry, targetKeywords, pageType, pageName }) => {
+  async ({ code, css, js, industry, targetKeywords, pageType, pageName }) => {
     try {
       const result = seoAudit({
         code,
+        css: css || undefined,
+        js: js || undefined,
         industry: industry || currentScope?.industry,
         targetKeywords,
         pageType,
@@ -1141,8 +1363,11 @@ The Markdown file acts as a project handoff document — it tells the developer 
     }).optional().describe(
       'Scores from seo_audit, design_consistency_check, and review_output'
     ),
+    outputDir: z.string().optional().describe(
+      'Absolute path to write BUILD-MANIFEST.md to disk. If provided, the file is written and a compact summary is returned. Example: "/home/user/projects/my-site"'
+    ),
   },
-  async ({ projectName, framework, pages, uiverseComponents, builtInComponents, designSummary, auditScores }) => {
+  async ({ projectName, framework, pages, uiverseComponents, builtInComponents, designSummary, auditScores, outputDir }) => {
     try {
       const result = generateBuildManifest({
         projectName,
@@ -1153,6 +1378,20 @@ The Markdown file acts as a project handoff document — it tells the developer 
         designSummary: designSummary as any,
         auditScores: auditScores as any,
       });
+
+      // Write to disk if outputDir provided
+      if (outputDir) {
+        const writeResult = writeFilesToDisk(outputDir, [
+          { path: 'BUILD-MANIFEST.md', content: result.markdown },
+        ]);
+        let output = result.summary;
+        output += `\n\n### File Written to \`${outputDir}\`\n`;
+        output += `**1 file** written (${(result.markdown.length / 1024).toFixed(1)} KB)\n\n`;
+        output += `- \`BUILD-MANIFEST.md\` (${(result.markdown.length / 1024).toFixed(1)} KB)\n`;
+        return {
+          content: [{ type: 'text' as const, text: output }],
+        };
+      }
 
       let output = result.summary;
       output += '\n\n---\n\n';

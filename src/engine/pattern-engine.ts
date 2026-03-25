@@ -39,6 +39,9 @@ function selectPatternStyle(industry: Industry): PatternStyle {
     food: 'blob',
     ecommerce: 'blob',
     realestate: 'geometric',
+    fitness: 'geometric',
+    coaching: 'gradient',
+    consulting: 'geometric',
   };
 
   return patternMap[industry];

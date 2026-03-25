@@ -73,18 +73,25 @@ function fixMissingCharset(html: string): { html: string; fixed: boolean } {
 }
 
 function fixMissingTitle(html: string, pageName: string): { html: string; fixed: boolean } {
-  if (html.includes('<title>') && !html.includes('<title></title>')) {
+  // Check if existing title is too short (under 20 chars) or too generic
+  const existingTitleMatch = html.match(/<title>([^<]*)<\/title>/);
+  if (existingTitleMatch) {
+    const existingTitle = existingTitleMatch[1].trim();
+    const genericTitles = ['home', 'about', 'services', 'contact', 'page', 'index'];
+    const isTooShort = existingTitle.length < 20;
+    const isGeneric = genericTitles.includes(existingTitle.toLowerCase());
+
+    if (isTooShort || isGeneric) {
+      const betterTitle = `${pageName} — Professional Solutions for Your Business`;
+      return {
+        html: html.replace(/<title>[^<]*<\/title>/, `<title>${betterTitle}</title>`),
+        fixed: true,
+      };
+    }
     return { html, fixed: false };
   }
 
   const titleTag = `  <title>${pageName}</title>`;
-
-  if (html.includes('<title></title>')) {
-    return {
-      html: html.replace('<title></title>', `<title>${pageName}</title>`),
-      fixed: true,
-    };
-  }
 
   if (html.includes('</head>')) {
     return {
@@ -100,10 +107,22 @@ function fixMissingMetaDescription(
   pageName: string,
   industry: string
 ): { html: string; fixed: boolean } {
-  if (html.includes('name="description"')) return { html, fixed: false };
+  const fullDesc = `Professional ${industry} solutions — ${pageName}. Discover our services, explore features, and learn how we can help transform your business with expert solutions tailored to your needs.`;
 
-  const desc = `Professional ${industry} solutions — ${pageName}. Discover features, pricing, and more.`;
-  const metaTag = `  <meta name="description" content="${desc}">`;
+  // Check if existing description is too short (under 100 chars)
+  const existingDescMatch = html.match(/<meta\s+name="description"\s+content="([^"]*)"/);
+  if (existingDescMatch) {
+    const existingDesc = existingDescMatch[1].trim();
+    if (existingDesc.length < 100) {
+      return {
+        html: html.replace(/<meta\s+name="description"\s+content="[^"]*"/, `<meta name="description" content="${fullDesc}"`),
+        fixed: true,
+      };
+    }
+    return { html, fixed: false };
+  }
+
+  const metaTag = `  <meta name="description" content="${fullDesc}">`;
 
   if (html.includes('</head>')) {
     return {

@@ -393,8 +393,7 @@ function generateHtmlPage(
   <link rel="stylesheet" href="assets/css/reset.css">
   <link rel="stylesheet" href="assets/css/variables.css">
   <link rel="stylesheet" href="assets/css/animations.css">
-  <link rel="stylesheet" href="assets/css/base.css">
-  <link rel="stylesheet" href="assets/css/layout.css">
+  <link rel="stylesheet" href="assets/css/components.css">
 
   <style>
     /* Page-specific styles */
@@ -1427,8 +1426,7 @@ All styles use CSS custom properties defined in \`variables.css\`. Customize col
 - \`css/variables.css\` — Design tokens (colors, typography, spacing)
 - \`css/reset.css\` — Modern CSS reset
 - \`css/animations.css\` — Scroll and interaction animations
-- \`css/base.css\` — Base element styles
-- \`css/layout.css\` — Layout utilities and structural styles
+- \`css/components.css\` — Base element styles + layout utilities + shared components
 
 ## Adding Content
 
@@ -1477,15 +1475,9 @@ export function scaffoldProject(input: ScaffoldProjectInput): ScaffoldProjectOut
   });
 
   files.push({
-    path: `${cssPrefix}/base.css`,
-    content: generateBaseCSS(designTokens),
-    description: 'Base element styles',
-  });
-
-  files.push({
-    path: `${cssPrefix}/layout.css`,
-    content: generateLayoutCSS(),
-    description: 'Layout utilities',
+    path: `${cssPrefix}/components.css`,
+    content: generateBaseCSS(designTokens) + '\n\n' + generateLayoutCSS(),
+    description: 'Base element styles + layout utilities + shared components',
   });
 
   files.push({
@@ -1660,8 +1652,7 @@ function buildScaffoldSummary(framework: Framework, pages: Array<{ name: string;
 - \`css/variables.css\` — Design tokens (colors, typography, spacing, shadows, etc.)
 - \`css/reset.css\` — Modern CSS reset
 - \`css/animations.css\` — Scroll and interaction animations
-- \`css/base.css\` — Base element styles
-- \`css/layout.css\` — Layout utilities and structural styles
+- \`css/components.css\` — Base element styles + layout utilities + shared components
 
 #### JavaScript
 - \`js/animations.js\` — Intersection Observer for scroll animations

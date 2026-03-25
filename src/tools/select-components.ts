@@ -115,7 +115,7 @@ function resolveFramework(input: string): Framework {
 const PRESETS: Record<string, ComponentCategory[]> = {
   'all': VALID_CATEGORIES,
   'form': ['input', 'checkbox', 'toggle', 'radio', 'button-primary', 'button-secondary'],
-  'landing': ['button-primary', 'button-secondary', 'card', 'navigation', 'badge'],
+  'landing': ['button-primary', 'button-secondary', 'card', 'input', 'navigation', 'badge'],
   'dashboard': ['button-primary', 'button-secondary', 'card', 'input', 'toggle', 'badge', 'dropdown', 'navigation', 'modal', 'loader'],
   'minimal': ['button-primary', 'card', 'input', 'navigation'],
 };

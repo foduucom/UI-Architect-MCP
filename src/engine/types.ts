@@ -20,7 +20,10 @@ export type Industry =
   | 'nonprofit'
   | 'luxury'
   | 'startup'
-  | 'corporate';
+  | 'corporate'
+  | 'fitness'
+  | 'coaching'
+  | 'consulting';
 
 export type Tone =
   | 'corporate'

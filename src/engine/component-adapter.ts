@@ -18,6 +18,7 @@ import type {
   Tone,
 } from './types.js';
 import { LOCAL_COMPONENTS as COMPONENT_LIBRARY } from './local-library.js';
+import { scoreComponentFit, getStyleConstraints } from './style-classifier.js';
 
 // ─── Industry → Style Mapping ────────────────────────────────────────────────
 
@@ -69,20 +70,40 @@ export function resolveComponentStyle(
 
 /**
  * Select the best component from the library for a given category + style.
- * If no exact style match, falls back to 'animated', then any available.
+ * If industry/tone are provided, applies style constraints to filter out
+ * incompatible components (e.g., brutalist cards for a luxury restaurant).
+ * Falls back through: exact style → 'animated' → any available.
  */
 export function selectComponent(
   category: ComponentCategory,
   stylePreference: ComponentStyle = 'animated',
-  animationPreference: 'low' | 'medium' | 'high' = 'high'
+  animationPreference: 'low' | 'medium' | 'high' = 'high',
+  industry?: Industry,
+  tone?: Tone
 ): ComponentDefinition | null {
-  const allForCategory = COMPONENT_LIBRARY.filter((c) => c.category === category);
+  let allForCategory = COMPONENT_LIBRARY.filter((c) => c.category === category);
   if (allForCategory.length === 0) return null;
+
+  // Apply industry/tone style constraints to filter incompatible components
+  const constraints = (industry || tone)
+    ? getStyleConstraints(industry, tone)
+    : null;
+
+  if (constraints) {
+    const scored = allForCategory
+      .map(c => ({ comp: c, fit: scoreComponentFit(c.css || '', c.tags, constraints) }))
+      .filter(x => x.fit >= 40) // reject hard-rejected (-1) AND low-scoring style mismatches
+      .sort((a, b) => b.fit - a.fit); // best fit first
+
+    if (scored.length > 0) {
+      allForCategory = scored.map(x => x.comp);
+    }
+    // If all were rejected, fall through to unfiltered selection
+  }
 
   // Try exact style match first
   const exactMatch = allForCategory.filter((c) => c.style === stylePreference);
   if (exactMatch.length > 0) {
-    // Sort by animation level
     const levels = { high: 3, medium: 2, low: 1 };
     exactMatch.sort((a, b) => levels[b.animationLevel] - levels[a.animationLevel]);
     if (animationPreference === 'low') exactMatch.reverse();
@@ -106,12 +127,14 @@ export function selectComponent(
 export function buildTokenRegistry(
   categories: ComponentCategory[],
   stylePreference: ComponentStyle = 'animated',
-  animationPreference: 'low' | 'medium' | 'high' = 'high'
+  animationPreference: 'low' | 'medium' | 'high' = 'high',
+  industry?: Industry,
+  tone?: Tone
 ): DesignTokenRegistry {
   const registry: DesignTokenRegistry = {};
 
   for (const category of categories) {
-    const component = selectComponent(category, stylePreference, animationPreference);
+    const component = selectComponent(category, stylePreference, animationPreference, industry, tone);
     if (component) {
       registry[category] = {
         componentId: component.id,
@@ -271,7 +294,7 @@ export function adaptComponents(
   const resolvedStyle = stylePreference
     ?? resolveComponentStyle(tokens.industry, tokens.tone);
 
-  const registry = buildTokenRegistry(categories, resolvedStyle, animationPreference);
+  const registry = buildTokenRegistry(categories, resolvedStyle, animationPreference, tokens.industry, tokens.tone);
   const components: AdaptedComponent[] = [];
 
   for (const category of categories) {

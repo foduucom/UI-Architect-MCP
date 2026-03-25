@@ -1,19 +1,21 @@
 /**
  * MCP Tool: explore_components
  *
- * Fetches REAL animated UI components from UIverse.io's GitHub repository
- * (https://github.com/uiverse-io/galaxy) via GitHub's REST API.
- *
- * Makes the MCP server HYBRID — uses both built-in library AND fresh UIverse components.
- * Provides production-ready, animated components for adaptation into the design system.
+ * Discovers animated UI components using a LOCAL-FIRST strategy:
+ *  1. Searches the 3800+ built-in local registry (src/components/*)
+ *  2. Optionally supplements with live GitHub fetches from UIverse.io
  *
  * Features:
- * - GitHub REST API integration with rate-limit handling
+ * - LOCAL-FIRST: Instant results from 3800+ pre-indexed components
  * - Animation detection and scoring (prefer components with @keyframes, transitions, transforms)
- * - In-memory caching to minimize API calls
- * - Component parsing (HTML + CSS extraction from self-contained files)
- * - Filtering by animation level, keyword search, and availability
+ * - Keyword search across tags, name, and description
+ * - GitHub supplement for fresh community components (rate-limited, optional)
+ * - In-memory caching for GitHub results
  */
+
+import { LOCAL_COMPONENTS } from '../engine/local-library.js';
+import type { ComponentDefinition } from '../engine/types.js';
+import { getStyleConstraints, scoreComponentFit } from '../engine/style-classifier.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,10 @@ export interface ExploreComponentsInput {
   searchQuery?: string;
   /** Min animation count required (default: 1 if preferAnimated, else 0) */
   minAnimations?: number;
+  /** Industry for style-aware filtering (e.g., 'luxury', 'restaurant', 'corporate') */
+  industry?: string;
+  /** Tone for style-aware filtering (e.g., 'elegant', 'minimal', 'bold') */
+  tone?: string;
 }
 
 export interface UIverseComponent {
@@ -124,6 +130,106 @@ const CATEGORY_MAP: Record<string, string> = {
   'dialog': 'modals',
   'popup': 'modals',
 };
+
+// ─── Local Registry Category Mapping ────────────────────────────────────────
+// Maps explore-tool category names → local registry category field values
+const LOCAL_CATEGORY_MAP: Record<string, string[]> = {
+  'buttons':         ['button-primary', 'button-secondary'],
+  'cards':           ['card'],
+  'inputs':          ['input'],
+  'checkboxes':      ['checkbox'],
+  'toggle-switches': ['toggle'],
+  'radio-buttons':   ['radio'],
+  'tooltips':        ['tooltip'],
+  'loaders':         ['loader'],
+  'forms':           ['form', 'input'],  // forms may use input components too
+  'navigation':      ['navigation'],
+  'badges':          ['badge'],
+  'modals':          ['modal'],
+  'dropdowns':       ['dropdown'],
+  'notifications':   ['notification'],
+};
+
+/**
+ * Searches the local 3800+ component registry.
+ * Filters by category, optional keyword, industry/tone style constraints,
+ * and scores by animation + style fit.
+ */
+function searchLocalComponents(
+  category: string,
+  searchQuery?: string,
+  preferAnimated?: boolean,
+  maxCount: number = 5,
+  industry?: string,
+  tone?: string
+): UIverseComponent[] {
+  const localCategories = LOCAL_CATEGORY_MAP[category];
+  if (!localCategories || localCategories.length === 0) {
+    return [];
+  }
+
+  // Resolve style constraints from industry + tone
+  const constraints = (industry || tone)
+    ? getStyleConstraints(industry, tone)
+    : null;
+
+  // Filter local components by matching categories
+  let matched: ComponentDefinition[] = LOCAL_COMPONENTS.filter(
+    comp => localCategories.includes(comp.category)
+  );
+
+  // Filter by search query (match against tags, name, description)
+  if (searchQuery && searchQuery.trim()) {
+    const lowerQuery = searchQuery.toLowerCase().trim();
+    matched = matched.filter(comp =>
+      comp.name.toLowerCase().includes(lowerQuery) ||
+      comp.description.toLowerCase().includes(lowerQuery) ||
+      comp.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+    );
+  }
+
+  // Convert to UIverseComponent format with animation + style scoring
+  const results: Array<UIverseComponent & { styleFitScore: number }> = [];
+
+  for (const comp of matched) {
+    const animInfo = analyzeAnimations(comp.css || '');
+
+    // Apply industry/tone style filter if constraints exist
+    let styleFit = 50; // neutral score when no constraints
+    if (constraints) {
+      styleFit = scoreComponentFit(comp.css || '', comp.tags, constraints);
+      if (styleFit === -1) continue; // rejected by forbid tags
+    }
+
+    results.push({
+      name: comp.name,
+      category,
+      html: comp.html || '',
+      css: comp.css || '',
+      hasAnimations: animInfo.hasAnimations,
+      animationCount: animInfo.animationCount,
+      animationNames: animInfo.animationNames,
+      hasTransitions: animInfo.hasTransitions,
+      source: 'local-registry',
+      sourceUrl: `built-in://${comp.id}`,
+      animationScore: animInfo.score,
+      styleFitScore: styleFit,
+    });
+  }
+
+  // Sort by combined score: style fit (primary) + animation score (secondary)
+  if (constraints) {
+    results.sort((a, b) => {
+      const diff = b.styleFitScore - a.styleFitScore;
+      if (diff !== 0) return diff;
+      return preferAnimated ? b.animationScore - a.animationScore : 0;
+    });
+  } else if (preferAnimated) {
+    results.sort((a, b) => b.animationScore - a.animationScore);
+  }
+
+  return results.slice(0, maxCount);
+}
 
 // ─── In-Memory Cache ────────────────────────────────────────────────────────
 
@@ -398,6 +504,8 @@ export async function exploreComponents(
     maxPerCategory = 5,
     searchQuery,
     minAnimations,
+    industry,
+    tone,
   } = input;
 
   const errors: string[] = [];
@@ -425,42 +533,80 @@ export async function exploreComponents(
     };
   }
 
-  // Fetch components for each category
+  // LOCAL-FIRST: Search local registries, then optionally supplement from GitHub
   for (const category of normalizedCategories) {
     try {
-      const categoryComponents = await fetchComponentsForCategory(
+      // Step 1: Search local registry (instant, reliable)
+      const localResults = searchLocalComponents(
         category,
-        maxPerCategory
+        searchQuery,
+        preferAnimated,
+        maxPerCategory,
+        industry,
+        tone
       );
 
-      if (categoryComponents.length === 0) {
+      if (localResults.length > 0) {
+        categoriesSearched.push(category);
+        allComponents.push(...localResults);
+      }
+
+      // Step 2: If local didn't fill quota, try GitHub as supplement
+      if (localResults.length < maxPerCategory) {
+        try {
+          const githubComponents = await fetchComponentsForCategory(
+            category,
+            maxPerCategory - localResults.length
+          );
+
+          let filtered = githubComponents;
+
+          // Filter by animation preference
+          if (preferAnimated) {
+            const minScore = minAnimations ? minAnimations * 15 : 15;
+            filtered = filtered.filter(
+              comp => comp.animationScore >= minScore && comp.hasAnimations
+            );
+          }
+
+          // Filter by search query
+          if (searchQuery && searchQuery.trim()) {
+            filtered = filterBySearchQuery(filtered, searchQuery);
+          }
+
+          // Apply industry/tone style constraints to GitHub components too
+          if (industry || tone) {
+            const constraints = getStyleConstraints(industry, tone);
+            if (constraints) {
+              filtered = filtered.filter(comp => {
+                // Extract tags from CSS comment line (UIverse components have tags in comments)
+                const tagMatch = comp.css.match(/Tags:\s*([^\n*]+)/i);
+                const tags = tagMatch ? tagMatch[1].split(',').map(t => t.trim().toLowerCase()) : [];
+                const fitScore = scoreComponentFit(comp.css, tags, constraints);
+                return fitScore !== -1; // reject forbidden components
+              });
+            }
+          }
+
+          const remaining = maxPerCategory - localResults.length;
+          if (filtered.length > 0) {
+            allComponents.push(...filtered.slice(0, remaining));
+            if (!categoriesSearched.includes(category)) {
+              categoriesSearched.push(category);
+            }
+          }
+        } catch (githubError) {
+          // GitHub is optional — local results are sufficient
+          const msg = `GitHub supplement skipped for "${category}": ${githubError instanceof Error ? githubError.message : String(githubError)}`;
+          errors.push(msg);
+        }
+      }
+
+      if (localResults.length === 0 && !categoriesSearched.includes(category)) {
         errors.push(`No components found for category: ${category}`);
-        continue;
       }
-
-      categoriesSearched.push(category);
-
-      let filtered = categoryComponents;
-
-      // Filter by animation preference
-      if (preferAnimated) {
-        const minScore = minAnimations ? minAnimations * 15 : 15; // rough scoring
-        filtered = filtered.filter(
-          comp =>
-            comp.animationScore >= minScore &&
-            comp.hasAnimations
-        );
-      }
-
-      // Filter by search query
-      if (searchQuery && searchQuery.trim()) {
-        filtered = filterBySearchQuery(filtered, searchQuery);
-      }
-
-      // Take top N per category
-      allComponents.push(...filtered.slice(0, maxPerCategory));
     } catch (error) {
-      const errorMsg = `Error fetching category "${category}": ${error instanceof Error ? error.message : String(error)}`;
+      const errorMsg = `Error searching category "${category}": ${error instanceof Error ? error.message : String(error)}`;
       errors.push(errorMsg);
       console.error(errorMsg);
     }
@@ -470,7 +616,9 @@ export async function exploreComponents(
   allComponents.sort((a, b) => b.animationScore - a.animationScore);
 
   // Generate summary
-  let summary = `Discovered ${allComponents.length} components from UIverse.io across ${categoriesSearched.length} categories.`;
+  const localCount = allComponents.filter(c => c.source === 'local-registry').length;
+  const githubCount = allComponents.filter(c => c.source === 'uiverse-github').length;
+  let summary = `Discovered ${allComponents.length} components across ${categoriesSearched.length} categories (${localCount} local, ${githubCount} GitHub).`;
 
   if (preferAnimated) {
     const animatedCount = allComponents.filter(c => c.hasAnimations).length;
@@ -479,6 +627,11 @@ export async function exploreComponents(
 
   if (searchQuery) {
     summary += ` Filtered by keyword: "${searchQuery}".`;
+  }
+
+  if (industry || tone) {
+    const styleLabel = [industry, tone].filter(Boolean).join('/');
+    summary += ` Style-filtered for ${styleLabel} (incompatible components excluded).`;
   }
 
   if (errors.length > 0) {

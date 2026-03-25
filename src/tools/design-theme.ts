@@ -28,6 +28,7 @@ const VALID_INDUSTRIES: Industry[] = [
   'finance', 'healthcare', 'technology', 'ecommerce', 'education',
   'food', 'realestate', 'legal', 'creative', 'environmental',
   'gaming', 'nonprofit', 'luxury', 'startup', 'corporate',
+  'fitness', 'coaching', 'consulting',
 ];
 
 const VALID_TONES: Tone[] = [
@@ -96,14 +97,24 @@ function resolveIndustry(input: string): Industry {
     'high-end': 'luxury',
     'enterprise': 'corporate',
     'b2b': 'corporate',
-    'consulting': 'corporate',
+    'gym': 'fitness',
+    'trainer': 'fitness',
+    'workout': 'fitness',
+    'personal training': 'fitness',
+    'crossfit': 'fitness',
+    'bodybuilding': 'fitness',
+    'coach': 'coaching',
+    'life coach': 'coaching',
+    'mentor': 'coaching',
+    'consultant': 'consulting',
+    'advisory': 'consulting',
   };
 
   for (const [alias, industry] of Object.entries(aliases)) {
     if (lower.includes(alias)) return industry;
   }
 
-  return 'technology'; // safe default
+  return (lower as Industry) || 'technology'; // pass through unknown industries
 }
 
 function resolveTone(input: string): Tone {

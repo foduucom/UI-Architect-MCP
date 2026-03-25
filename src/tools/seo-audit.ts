@@ -11,7 +11,9 @@
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface SeoAuditInput {
-  code: string; // The generated HTML/CSS/JS code to audit
+  code: string; // The generated HTML code to audit
+  css?: string; // External CSS code (if separate from HTML)
+  js?: string; // External JS code (if separate from HTML)
   industry?: string; // Business industry for contextual recommendations
   targetKeywords?: string[]; // Optional target keywords to check for
   pageType?: string; // 'landing', 'product', 'blog', 'about', etc.
@@ -40,7 +42,9 @@ export interface SeoAuditOutput {
 // ─── Main Audit Function ────────────────────────────────────────────────────
 
 export function seoAudit(input: SeoAuditInput): SeoAuditOutput {
-  const { code, industry = 'tech', targetKeywords = [], pageType = 'landing', pageName = 'Page' } = input;
+  const { code: htmlCode, css: externalCss = '', js: externalJs = '', industry = 'tech', targetKeywords = [], pageType = 'landing', pageName = 'Page' } = input;
+  // Merge HTML + external CSS + external JS so all checks see the complete codebase
+  const code = [htmlCode, externalCss, externalJs].filter(Boolean).join('\n');
 
   const allIssues: SeoIssue[] = [];
   let score = 100;
@@ -574,17 +578,22 @@ function checkPerformance(code: string): SeoIssue[] {
 function checkAccessibility(code: string): SeoIssue[] {
   const issues: SeoIssue[] = [];
 
-  // Check for semantic landmarks
-  const hasHeader = code.includes('<header');
+  // Check for semantic landmarks — <nav role="navigation"> counts as header-level landmark
+  const hasHeader = code.includes('<header') || (code.includes('<nav') && code.includes('role="navigation"'));
   const hasMain = code.includes('<main');
   const hasFooter = code.includes('<footer');
   const hasNav = code.includes('<nav');
 
-  if (!hasHeader || !hasMain || !hasFooter) {
+  const missingLandmarks: string[] = [];
+  if (!hasHeader) missingLandmarks.push('<header>');
+  if (!hasMain) missingLandmarks.push('<main>');
+  if (!hasFooter) missingLandmarks.push('<footer>');
+
+  if (missingLandmarks.length > 0) {
     issues.push({
       severity: 'major',
       category: 'accessibility',
-      issue: 'Missing semantic HTML landmarks (<header>, <main>, <footer>)',
+      issue: `Missing semantic HTML landmarks (${missingLandmarks.join(', ')})`,
       impact: 'Missing landmarks hurt accessibility for screen readers and confuse search engines about page structure.',
       fix: 'Add semantic landmarks to structure the page properly.',
       codeSnippet: '<header>...</header>\n<main>...</main>\n<footer>...</footer>',
@@ -603,17 +612,18 @@ function checkAccessibility(code: string): SeoIssue[] {
     });
   }
 
-  // Check for form labels
+  // Check for form labels — aria-label and aria-labelledby also count as valid labeling
   const inputMatches = code.match(/<input[^>]*>/g) || [];
   const labelMatches = code.match(/<label[^>]*>/g) || [];
+  const ariaLabelledInputs = inputMatches.filter((inp) => inp.includes('aria-label') || inp.includes('aria-labelledby'));
 
-  if (inputMatches.length > 0 && labelMatches.length === 0) {
+  if (inputMatches.length > 0 && labelMatches.length === 0 && ariaLabelledInputs.length === 0) {
     issues.push({
       severity: 'major',
       category: 'accessibility',
-      issue: 'Form inputs found but no <label> elements',
+      issue: 'Form inputs found but no <label> elements or aria-label attributes',
       impact: 'Without labels, screen readers cannot associate text with inputs, failing accessibility.',
-      fix: 'Add <label> elements for all form inputs, linked with for attribute.',
+      fix: 'Add <label> elements for all form inputs, or use aria-label for accessible labeling.',
       codeSnippet: '<label for="email">Email:</label>\n<input id="email" type="email" />',
     });
   }
@@ -679,8 +689,9 @@ function checkContentQuality(code: string, industry: string, pageType: string): 
     });
   }
 
-  // Check for placeholder/lorem ipsum
-  if (code.includes('Lorem ipsum') || code.includes('lorem ipsum') || code.includes('dummy') || code.includes('placeholder')) {
+  // Check for placeholder/lorem ipsum — but exclude HTML placeholder attributes on inputs
+  const codeWithoutPlaceholderAttrs = code.replace(/placeholder=["'][^"']*["']/gi, '');
+  if (codeWithoutPlaceholderAttrs.includes('Lorem ipsum') || codeWithoutPlaceholderAttrs.includes('lorem ipsum') || codeWithoutPlaceholderAttrs.includes('dummy text') || /placeholder\s+(?:text|content|copy)/i.test(codeWithoutPlaceholderAttrs)) {
     issues.push({
       severity: 'critical',
       category: 'content',

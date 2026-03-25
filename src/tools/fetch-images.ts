@@ -294,6 +294,26 @@ const KEYWORD_ICON_MAP: Record<string, string> = {
   'therapy': 'heart-handshake',
   'insurance': 'shield-plus',
 
+  // Supplements & Vitamins
+  'vitamin': 'pill',
+  'vitamins': 'pill',
+  'supplement': 'flask-conical',
+  'supplements': 'flask-conical',
+  'organic': 'leaf',
+  'protein': 'dumbbell',
+  'mineral': 'gem',
+  'minerals': 'gem',
+  'probiotic': 'microscope',
+  'probiotics': 'microscope',
+  'collagen': 'droplets',
+  'omega': 'fish',
+  'antioxidant': 'shield-plus',
+  'immunity': 'shield-check',
+  'superfood': 'salad',
+  'superfoods': 'salad',
+  'herbal': 'flower-2',
+  'capsule': 'pill',
+
   // Education
   'education': 'graduation-cap',
   'learning': 'book-open',
@@ -534,8 +554,12 @@ const INDUSTRY_FEATURE_ICONS: Record<string, string[]> = {
   'gaming': ['gamepad-2', 'trophy', 'zap', 'users', 'headphones', 'play'],
   'nonprofit': ['heart-handshake', 'globe', 'users', 'hand-heart', 'megaphone', 'gift'],
   'luxury': ['gem', 'crown', 'sparkles', 'star', 'award', 'diamond'],
+  'supplements': ['pill', 'leaf', 'shield-check', 'flask-conical', 'heart-pulse', 'zap'],
   'startup': ['rocket', 'zap', 'trending-up', 'lightbulb', 'users', 'globe'],
   'corporate': ['building-2', 'briefcase', 'bar-chart-3', 'shield', 'users', 'globe'],
+  'fitness': ['dumbbell', 'heart-pulse', 'timer', 'flame', 'trophy', 'users'],
+  'coaching': ['target', 'compass', 'lightbulb', 'trending-up', 'message-circle', 'award'],
+  'consulting': ['briefcase', 'bar-chart-3', 'lightbulb', 'target', 'shield-check', 'users'],
 };
 
 // ─── In-memory Cache ────────────────────────────────────────────────────────
@@ -696,43 +720,52 @@ async function generateLucideIcons(
   altBase: string,
 ): Promise<ResolvedImage[]> {
   const icons: ResolvedImage[] = [];
+  const industryIcons = INDUSTRY_FEATURE_ICONS[industry] || INDUSTRY_FEATURE_ICONS['technology'];
 
-  // Use keywords if provided
+  // Build a deduplicated icon list: resolve keywords first, fill gaps from industry defaults
+  const iconPlan: Array<{ iconName: string; label: string }> = [];
+  const usedIcons = new Set<string>();
+
+  // Step 1: Resolve keywords to unique icons
   if (keywords.length > 0) {
-    for (let i = 0; i < count; i++) {
-      const keyword = keywords[i % keywords.length];
-      const iconName = resolveIconByKeyword(keyword);
-      const url = `${LUCIDE_CDN}/${iconName}.svg`;
-      const svgContent = await fetchSvgContent(url);
-      
-      icons.push({
-        url,
-        alt: `${altBase} — ${keyword}`,
-        width: 24,
-        height: 24,
-        source: 'lucide' as const,
-        isIcon: true,
-        svgContent,
-      });
+    for (const kw of keywords) {
+      const iconName = resolveIconByKeyword(kw);
+      if (!usedIcons.has(iconName)) {
+        usedIcons.add(iconName);
+        iconPlan.push({ iconName, label: kw });
+      }
     }
-  } else {
-    // Use industry defaults
-    const industryIcons = INDUSTRY_FEATURE_ICONS[industry] || INDUSTRY_FEATURE_ICONS['technology'];
-    for (let i = 0; i < count; i++) {
-      const iconName = industryIcons[i % industryIcons.length];
-      const url = `${LUCIDE_CDN}/${iconName}.svg`;
-      const svgContent = await fetchSvgContent(url);
+  }
 
-      icons.push({
-        url,
-        alt: `${altBase} ${i + 1}`,
-        width: 24,
-        height: 24,
-        source: 'lucide' as const,
-        isIcon: true,
-        svgContent,
-      });
+  // Step 2: Fill remaining slots from industry defaults (skip already-used icons)
+  for (const iconName of industryIcons) {
+    if (iconPlan.length >= count) break;
+    if (!usedIcons.has(iconName)) {
+      usedIcons.add(iconName);
+      iconPlan.push({ iconName, label: iconName.replace(/-/g, ' ') });
     }
+  }
+
+  // Step 3: If still short, cycle through what we have
+  const finalPlan: Array<{ iconName: string; label: string }> = [];
+  for (let i = 0; i < count; i++) {
+    finalPlan.push(iconPlan[i % iconPlan.length]);
+  }
+
+  // Step 4: Fetch all icons
+  for (const { iconName, label } of finalPlan) {
+    const url = `${LUCIDE_CDN}/${iconName}.svg`;
+    const svgContent = await fetchSvgContent(url);
+
+    icons.push({
+      url,
+      alt: `${altBase} — ${label}`,
+      width: 24,
+      height: 24,
+      source: 'lucide' as const,
+      isIcon: true,
+      svgContent,
+    });
   }
 
   return icons;

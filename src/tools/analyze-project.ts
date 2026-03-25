@@ -18,6 +18,11 @@ export interface AnalyzeProjectInput {
   industry?: string;
   framework?: string;
   pageCount?: number;
+  /** Brand/company name — propagated to navigation, footer, and content */
+  brandName?: string;
+  /** Explicit page names — overrides auto-detected template pages.
+   *  Example: ["Home", "About", "Menu", "Contact"] */
+  pageNames?: string[];
 }
 
 export interface PageDefinition {
@@ -40,6 +45,8 @@ export interface ProjectScope {
   accessibilityLevel: 'AA' | 'AAA';
   responsiveBreakpoints: string[];
   browserSupport: string;
+  /** Brand/company name — propagated throughout the pipeline */
+  brandName?: string;
 }
 
 export interface AnalyzeProjectOutput {
@@ -414,9 +421,22 @@ const INDUSTRY_KEYWORDS: Record<string, Industry> = {
   corporate: 'corporate',
   enterprise: 'corporate',
   b2b: 'corporate',
-  consulting: 'corporate',
   business: 'corporate',
   firm: 'corporate',
+  fitness: 'fitness',
+  gym: 'fitness',
+  trainer: 'fitness',
+  'personal training': 'fitness',
+  workout: 'fitness',
+  crossfit: 'fitness',
+  bodybuilding: 'fitness',
+  coaching: 'coaching',
+  coach: 'coaching',
+  mentor: 'coaching',
+  'life coach': 'coaching',
+  consulting: 'consulting',
+  consultant: 'consulting',
+  advisory: 'consulting',
 };
 
 // ─── Tone Detection ─────────────────────────────────────────────────────────
@@ -521,37 +541,66 @@ function detectFromKeywords<T>(text: string, keywordMap: Record<string, T>): T |
 function detectPageType(text: string): string {
   const lower = text.toLowerCase();
 
-  // Primary detection (most specific first)
-  if (lower.includes('shop') || lower.includes('store') || lower.includes('catalog') || lower.includes('product')) {
-    return 'ecommerce';
-  }
-  if (lower.includes('portfolio') || lower.includes('freelance') || lower.includes('showcase')) {
-    return 'portfolio';
-  }
-  if (lower.includes('blog') || lower.includes('article') || lower.includes('magazine')) {
-    return 'blog';
-  }
-  if (lower.includes('restaurant') || lower.includes('cafe') || lower.includes('menu')) {
-    return 'restaurant';
-  }
-  // Admin dashboard (only if explicitly mentioned as main project)
-  if ((lower.includes('admin') || lower.includes('panel')) && !lower.includes('shop') && !lower.includes('store')) {
-    return 'dashboard';
-  }
-  if (lower.includes('saas') || lower.includes('platform') || lower.includes('tool')) {
-    return 'saas';
-  }
-  if (lower.includes('company') || lower.includes('business') || lower.includes('firm') || lower.includes('corporate')) {
-    return 'corporate';
+  // Scoring-based classification — highest score wins
+  const scores: Record<string, number> = {
+    ecommerce: 0, portfolio: 0, blog: 0, restaurant: 0,
+    dashboard: 0, saas: 0, corporate: 0, landing: 0,
+  };
+
+  // Ecommerce — needs explicit commerce intent, not just "product"
+  if (lower.includes('shop') || lower.includes('store') || lower.includes('ecommerce') || lower.includes('e-commerce')) scores.ecommerce += 3;
+  if (lower.includes('catalog') || lower.includes('cart') || lower.includes('checkout') || lower.includes('inventory')) scores.ecommerce += 2;
+  if (lower.includes('product') && (lower.includes('sell') || lower.includes('buy') || lower.includes('price') || lower.includes('order'))) scores.ecommerce += 2;
+
+  // Corporate / Service company
+  if (lower.includes('company') || lower.includes('business') || lower.includes('firm')) scores.corporate += 3;
+  if (lower.includes('service') || lower.includes('consulting') || lower.includes('agency') || lower.includes('provider')) scores.corporate += 3;
+  if (lower.includes('corporate') || lower.includes('enterprise') || lower.includes('solutions')) scores.corporate += 2;
+  if (lower.includes('team') || lower.includes('about us') || lower.includes('our mission')) scores.corporate += 1;
+  // "product" without commerce context mildly boosts corporate (companies have products)
+  if (lower.includes('product') && !lower.includes('shop') && !lower.includes('store') && !lower.includes('cart')) scores.corporate += 1;
+
+  // SaaS
+  if (lower.includes('saas') || lower.includes('platform') || lower.includes('subscription')) scores.saas += 3;
+  if (lower.includes('software') || lower.includes('app') || lower.includes('dashboard')) scores.saas += 2;
+  if (lower.includes('free trial') || lower.includes('sign up') || lower.includes('pricing plan')) scores.saas += 2;
+  if (lower.includes('tool') && !lower.includes('restaurant')) scores.saas += 1;
+
+  // Portfolio
+  if (lower.includes('portfolio') || lower.includes('freelance') || lower.includes('showcase')) scores.portfolio += 3;
+  if (lower.includes('work samples') || lower.includes('case study') || lower.includes('gallery')) scores.portfolio += 1;
+
+  // Blog
+  if (lower.includes('blog') || lower.includes('article') || lower.includes('magazine') || lower.includes('publication')) scores.blog += 3;
+
+  // Restaurant
+  if (lower.includes('restaurant') || lower.includes('cafe') || lower.includes('food') || lower.includes('dining')) scores.restaurant += 3;
+  if (lower.includes('menu') || lower.includes('reservation') || lower.includes('cuisine')) scores.restaurant += 2;
+
+  // Dashboard
+  if (lower.includes('admin') || lower.includes('dashboard') || lower.includes('panel') || lower.includes('analytics')) {
+    if (!lower.includes('shop') && !lower.includes('store')) scores.dashboard += 3;
   }
 
-  // Fall back to keyword map
-  const types = Object.keys(PAGE_TYPE_KEYWORDS);
-  for (const type of types) {
-    if (lower.includes(type)) return type;
+  // Find highest score
+  let best = 'landing';
+  let bestScore = 0;
+  for (const [type, score] of Object.entries(scores)) {
+    if (score > bestScore) {
+      bestScore = score;
+      best = type;
+    }
   }
 
-  return 'landing'; // default
+  // If no strong signal, try keyword map fallback
+  if (bestScore === 0) {
+    const types = Object.keys(PAGE_TYPE_KEYWORDS);
+    for (const type of types) {
+      if (lower.includes(type)) return type;
+    }
+  }
+
+  return best;
 }
 
 function detectFeatures(text: string): string[] {
@@ -595,6 +644,60 @@ function detectFeatures(text: string): string[] {
   if (!features.includes('accessibility')) features.push('accessibility');
 
   return Array.from(new Set(features));
+}
+
+/**
+ * Infers reasonable sections for a page name when the user provides custom page names
+ * that don't match any template. Uses the page name + project type for context.
+ */
+function inferSectionsForPage(pageName: string, projectType: string, isHomepage: boolean): string[] {
+  const lower = pageName.toLowerCase();
+
+  // Homepage always gets hero + key sections
+  if (isHomepage || lower === 'home' || lower === 'landing') {
+    return ['hero', 'features', 'testimonials', 'cta'];
+  }
+
+  // Common page name patterns
+  if (lower === 'about' || lower === 'about us' || lower === 'story') {
+    return ['about', 'team', 'stats'];
+  }
+  if (lower === 'contact' || lower === 'contact us' || lower === 'get in touch') {
+    return ['contact-form', 'location', 'hours'];
+  }
+  if (lower === 'menu' || lower === 'our menu' || lower === 'food menu') {
+    return ['menu-categories', 'menu-items', 'specials'];
+  }
+  if (lower === 'services' || lower === 'our services') {
+    return ['services-grid', 'how-it-works', 'cta'];
+  }
+  if (lower === 'pricing' || lower === 'plans') {
+    return ['pricing', 'faq', 'cta'];
+  }
+  if (lower === 'gallery' || lower === 'photos' || lower === 'portfolio') {
+    return ['gallery', 'photo-grid'];
+  }
+  if (lower === 'blog' || lower === 'articles' || lower === 'news') {
+    return ['blog-grid', 'newsletter'];
+  }
+  if (lower === 'team' || lower === 'our team') {
+    return ['team', 'about'];
+  }
+  if (lower === 'faq' || lower === 'help') {
+    return ['faq', 'contact-form'];
+  }
+  if (lower === 'reservation' || lower === 'book' || lower === 'booking') {
+    return ['reservation-form', 'hours', 'location'];
+  }
+  if (lower === 'products' || lower === 'shop' || lower === 'store') {
+    return ['product-grid', 'newsletter'];
+  }
+  if (lower === 'testimonials' || lower === 'reviews') {
+    return ['testimonials', 'cta'];
+  }
+
+  // Fallback: generic sections
+  return ['hero', 'features', 'cta'];
 }
 
 function estimateComplexity(
@@ -666,11 +769,17 @@ function generateClarifyingQuestions(
 export function analyzeProject(input: AnalyzeProjectInput): AnalyzeProjectOutput {
   const description = input.description;
 
-  // Detect everything from the description
-  const detectedIndustry =
-    (input.industry ? detectFromKeywords(input.industry, INDUSTRY_KEYWORDS) : null) ||
-    detectFromKeywords(description, INDUSTRY_KEYWORDS) ||
-    ('technology' as Industry);
+  // Detect industry — explicit param takes priority, then description, then fallback
+  let detectedIndustry: Industry;
+  if (input.industry) {
+    detectedIndustry =
+      detectFromKeywords(input.industry, INDUSTRY_KEYWORDS) ||
+      (input.industry.toLowerCase().trim() as Industry);
+  } else {
+    detectedIndustry =
+      detectFromKeywords(description, INDUSTRY_KEYWORDS) ||
+      ('technology' as Industry);
+  }
 
   const detectedTone =
     detectFromKeywords(description, TONE_KEYWORDS) ||
@@ -694,10 +803,32 @@ export function analyzeProject(input: AnalyzeProjectInput): AnalyzeProjectOutput
   const pageType = detectPageType(description);
   const pageTemplate = PAGE_TYPE_KEYWORDS[pageType] || PAGE_TYPE_KEYWORDS['landing'];
 
-  // Use detected pages or custom page count
-  let pages = [...pageTemplate.pages];
-  if (input.pageCount && input.pageCount < pages.length) {
-    pages = pages.slice(0, input.pageCount);
+  // Use explicit page names if provided; otherwise use detected template pages
+  let pages: PageDefinition[];
+
+  if (input.pageNames && input.pageNames.length > 0) {
+    // User specified exact page names — build pages from those
+    pages = input.pageNames.map((name, index) => {
+      const slug = index === 0 ? 'index' : name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      // Try to match sections from template pages with similar names
+      const templateMatch = pageTemplate.pages.find(
+        (tp) => tp.name.toLowerCase() === name.toLowerCase() || tp.slug === slug
+      );
+      // Infer sections from the page name if no template match
+      const inferredSections = inferSectionsForPage(name, pageType, index === 0);
+      return {
+        name,
+        slug,
+        sections: templateMatch ? templateMatch.sections : inferredSections,
+        isHomepage: index === 0,
+        description: templateMatch ? templateMatch.description : `${name} page`,
+      };
+    });
+  } else {
+    pages = [...pageTemplate.pages];
+    if (input.pageCount && input.pageCount < pages.length) {
+      pages = pages.slice(0, input.pageCount);
+    }
   }
 
   const featuresArray = detectFeatures(description);
@@ -706,7 +837,7 @@ export function analyzeProject(input: AnalyzeProjectInput): AnalyzeProjectOutput
 
   const clarifyingQuestions = generateClarifyingQuestions(
     description,
-    detectedIndustry === 'technology' ? null : detectedIndustry,
+    detectedIndustry,
     detectedFramework,
     pageType,
     pages
@@ -747,6 +878,7 @@ export function analyzeProject(input: AnalyzeProjectInput): AnalyzeProjectOutput
     accessibilityLevel: 'AA',
     responsiveBreakpoints: ['375px (mobile)', '768px (tablet)', '1024px (desktop)', '1280px (wide)'],
     browserSupport: 'Modern evergreen browsers + Safari 15+',
+    brandName: input.brandName,
   };
 
   // Build summary

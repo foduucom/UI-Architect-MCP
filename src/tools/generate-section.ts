@@ -28,9 +28,16 @@ import {
   instantiateCard,
   instantiateInput,
 } from '../engine/uiverse-adapter.js';
+import { generateContent } from './generate-content.js';
 import type { ResolvedImage } from './fetch-images.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface PageInfo {
+  name: string;
+  slug: string;
+  isHomepage?: boolean;
+}
 
 export interface GenerateSectionInput {
   sectionType: string;
@@ -42,6 +49,12 @@ export interface GenerateSectionInput {
   uiverseComponents?: UIverseComponentMap | null;
   /** Resolved images per section type from fetchImages */
   imageData?: Record<string, import('./fetch-images.js').ResolvedImage[]> | null;
+  /** Page definitions for multi-page navigation context */
+  pages?: PageInfo[] | null;
+  /** Current page slug for active-state highlighting */
+  currentPageSlug?: string | null;
+  /** Brand/project name for navigation and footer */
+  brandName?: string | null;
 }
 
 export interface SectionContent {
@@ -97,8 +110,11 @@ const SECTION_REQUIREMENTS: Record<string, ComponentCategory[]> = {
   'clients': [],
   'how-it-works': ['card'],
   'gallery': [],
-  'menu-preview': ['card'],
-  'menu-items': ['card'],
+  'menu-preview': ['card', 'button-primary'],
+  'menu-items': ['card', 'button-primary', 'button-secondary'],
+  'menu-categories': ['card', 'button-primary', 'button-secondary'],
+  'specials': ['card', 'badge'],
+  'reservation-form': ['input', 'button-primary'],
   'blog-grid': ['card', 'badge'],
   'post-grid': ['card', 'badge'],
   'featured-posts': ['card', 'badge'],
@@ -110,11 +126,69 @@ const SECTION_REQUIREMENTS: Record<string, ComponentCategory[]> = {
 
 // ─── Default Content ────────────────────────────────────────────────────────
 
+// Industry-specific hero content so we don't show generic SaaS copy for restaurants
+const INDUSTRY_HERO: Record<string, { headline: string; subheadline: string; ctaText: string; ctaSecondaryText: string }> = {
+  restaurant: {
+    headline: 'An Unforgettable Dining Experience',
+    subheadline: 'Where culinary artistry meets timeless elegance. Discover hand-crafted dishes made from the finest seasonal ingredients.',
+    ctaText: 'Book a Table',
+    ctaSecondaryText: 'View Menu',
+  },
+  food: {
+    headline: 'Savor Every Moment',
+    subheadline: 'Fresh, locally sourced ingredients transformed into extraordinary dishes. A feast for all your senses.',
+    ctaText: 'Order Now',
+    ctaSecondaryText: 'Our Menu',
+  },
+  luxury: {
+    headline: 'Experience True Elegance',
+    subheadline: 'Meticulously crafted for those who appreciate the finest things in life. Where every detail matters.',
+    ctaText: 'Explore',
+    ctaSecondaryText: 'Learn More',
+  },
+  healthcare: {
+    headline: 'Your Health, Our Priority',
+    subheadline: 'Compassionate care backed by cutting-edge technology. Trusted by thousands of patients and families.',
+    ctaText: 'Book Appointment',
+    ctaSecondaryText: 'Our Services',
+  },
+  ecommerce: {
+    headline: 'Discover What You Love',
+    subheadline: 'Curated collections, exceptional quality, and free shipping on every order. Shop with confidence.',
+    ctaText: 'Shop Now',
+    ctaSecondaryText: 'New Arrivals',
+  },
+  education: {
+    headline: 'Learn Without Limits',
+    subheadline: 'Expert-led courses designed to help you grow. Start your journey today with world-class instruction.',
+    ctaText: 'Get Started',
+    ctaSecondaryText: 'Browse Courses',
+  },
+  realestate: {
+    headline: 'Find Your Perfect Home',
+    subheadline: 'Premium properties in the most desirable locations. Let us help you discover where you belong.',
+    ctaText: 'View Listings',
+    ctaSecondaryText: 'Contact Agent',
+  },
+  corporate: {
+    headline: 'Solutions That Drive Results',
+    subheadline: 'Enterprise-grade tools built for modern teams. Streamline operations and accelerate growth.',
+    ctaText: 'Get Started',
+    ctaSecondaryText: 'Learn More',
+  },
+};
+
 function getDefaultContent(sectionType: string, industry: string): SectionContent {
   const industryName = industry.charAt(0).toUpperCase() + industry.slice(1);
+  const heroOverride = INDUSTRY_HERO[industry.toLowerCase()];
 
   const defaults: Record<string, SectionContent> = {
-    'hero': {
+    'hero': heroOverride ? {
+      headline: heroOverride.headline,
+      subheadline: heroOverride.subheadline,
+      ctaText: heroOverride.ctaText,
+      ctaSecondaryText: heroOverride.ctaSecondaryText,
+    } : {
       headline: `Transform Your ${industryName} Business`,
       subheadline:
         'Build something extraordinary with tools designed for modern teams. Ship faster, scale smarter, grow bigger.',
@@ -361,18 +435,226 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
         { title: 'Company F', description: '' },
       ],
     },
+    // ─── Restaurant / Food Sections ──────────────────────────────────────
+    'menu-preview': {
+      headline: 'Our Signature Dishes',
+      subheadline: 'Hand-crafted masterpieces from our kitchen.',
+      items: [
+        { title: 'Grilled Ribeye Steak', description: 'Prime cut with herb butter, roasted garlic mash, and seasonal vegetables.', price: '$48', image: resolvePicsumUrl(600, 400, 301) },
+        { title: 'Pan-Seared Salmon', description: 'Atlantic salmon with lemon dill sauce, wild rice, and grilled asparagus.', price: '$36', image: resolvePicsumUrl(600, 400, 302) },
+        { title: 'Truffle Pappardelle', description: 'Fresh pappardelle with wild mushroom ragu, black truffle, and aged parmesan.', price: '$32', image: resolvePicsumUrl(600, 400, 303) },
+        { title: 'Dark Chocolate Soufflé', description: 'Warm Valrhona chocolate soufflé with vanilla bean crème anglaise.', price: '$18', image: resolvePicsumUrl(600, 400, 304) },
+      ],
+      ctaText: 'View Full Menu',
+    },
+    'menu-items': {
+      headline: 'Our Menu',
+      subheadline: 'Explore our carefully curated selection of dishes.',
+      items: [
+        { title: 'Truffle Bruschetta', description: 'Grilled sourdough, whipped ricotta, black truffle, honey drizzle.', price: '$16', badge: 'starters' },
+        { title: 'Tuna Tartare', description: 'Yellowfin tuna, avocado, sesame, crispy wonton, ponzu.', price: '$22', badge: 'starters' },
+        { title: 'Lobster Bisque', description: 'Creamy lobster bisque, cognac cream, chive oil, brioche croutons.', price: '$18', badge: 'starters' },
+        { title: 'Prime Ribeye', description: '28-day dry-aged prime ribeye, bone marrow butter, truffle fries.', price: '$58', badge: 'mains' },
+        { title: 'Chilean Sea Bass', description: 'Miso-glazed sea bass, bok choy, ginger-scallion broth.', price: '$48', badge: 'mains' },
+        { title: 'Duck Confit', description: 'Crispy duck leg, cherry gastrique, whipped sweet potato, arugula.', price: '$42', badge: 'mains' },
+        { title: 'Rack of Lamb', description: 'Herb-crusted New Zealand lamb, rosemary jus, root vegetables.', price: '$52', badge: 'mains' },
+        { title: 'Crème Brûlée', description: 'Classic vanilla bean crème brûlée with caramelized sugar crust.', price: '$16', badge: 'desserts' },
+        { title: 'Tiramisu', description: 'Espresso-soaked ladyfingers, mascarpone, cocoa, amaretto.', price: '$18', badge: 'desserts' },
+        { title: 'Molten Lava Cake', description: 'Warm chocolate fondant, raspberry coulis, vanilla gelato.', price: '$20', badge: 'desserts' },
+        { title: 'Reserve Cabernet', description: 'Napa Valley reserve cabernet sauvignon, full-bodied, oak-aged.', price: '$24', badge: 'drinks' },
+        { title: 'Smoky Old Fashioned', description: 'Smoked bourbon, demerara, angostura, flamed orange peel.', price: '$18', badge: 'drinks' },
+      ],
+    },
+    'menu-categories': {
+      headline: 'Menu Categories',
+      subheadline: 'Browse by category.',
+      items: [
+        { title: 'All', description: 'all' },
+        { title: 'Starters', description: 'starters' },
+        { title: 'Main Course', description: 'mains' },
+        { title: 'Desserts', description: 'desserts' },
+        { title: 'Drinks', description: 'drinks' },
+      ],
+    },
+    'specials': {
+      headline: "Chef's Specials",
+      subheadline: 'Limited-time creations from our head chef.',
+      items: [
+        { title: 'Wagyu Beef Tenderloin', description: 'Pan-seared A5 wagyu with black truffle jus and roasted garlic mash.', price: '$68', badge: "Chef's Pick", image: resolvePicsumUrl(600, 400, 305) },
+        { title: 'Grilled Lobster Tail', description: 'Butter-poached Maine lobster with saffron risotto and champagne beurre blanc.', price: '$54', badge: 'Popular', image: resolvePicsumUrl(600, 400, 306) },
+      ],
+    },
+    // ─── Gallery Sections ────────────────────────────────────────────────
+    'gallery': {
+      headline: 'Our Gallery',
+      subheadline: 'A visual journey through our world.',
+      items: [
+        { title: 'Image 1', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 310) },
+        { title: 'Image 2', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 311) },
+        { title: 'Image 3', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 312) },
+        { title: 'Image 4', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 313) },
+        { title: 'Image 5', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 314) },
+        { title: 'Image 6', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 315) },
+      ],
+    },
+    'photo-grid': {
+      headline: 'Photo Gallery',
+      subheadline: 'Moments captured in time.',
+      items: [
+        { title: 'Photo 1', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 320) },
+        { title: 'Photo 2', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 321) },
+        { title: 'Photo 3', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 322) },
+        { title: 'Photo 4', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 323) },
+        { title: 'Photo 5', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 324) },
+        { title: 'Photo 6', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 325) },
+      ],
+    },
+    'lightbox': {
+      headline: 'Gallery',
+      subheadline: 'Click any image to view full size.',
+    },
+    // ─── Reservation / Booking ───────────────────────────────────────────
+    'reservation-form': {
+      headline: 'Reserve a Table',
+      subheadline: 'Book your dining experience with us.',
+      ctaText: 'Book Now',
+    },
+    // ─── Location / Hours ────────────────────────────────────────────────
+    'hours': {
+      headline: 'Opening Hours',
+      subheadline: 'We look forward to welcoming you.',
+      items: [
+        { title: 'Monday', description: 'Closed' },
+        { title: 'Tuesday – Thursday', description: '5:30 PM – 10:00 PM' },
+        { title: 'Friday – Saturday', description: '5:30 PM – 11:00 PM' },
+        { title: 'Sunday', description: '5:00 PM – 9:30 PM' },
+      ],
+    },
+    'location': {
+      headline: 'Find Us',
+      subheadline: 'Visit us at our location.',
+      description: '742 Culinary Lane, New York, NY 10012',
+    },
+    // ─── E-commerce Sections ─────────────────────────────────────────────
+    'product-grid': {
+      headline: 'Our Products',
+      subheadline: 'Explore our latest collection.',
+      items: [
+        { title: 'Product One', description: 'Premium quality with attention to detail.', price: '$49.99', image: resolvePicsumUrl(400, 400, 330), badge: 'New' },
+        { title: 'Product Two', description: 'Best-selling item loved by thousands.', price: '$79.99', image: resolvePicsumUrl(400, 400, 331), badge: 'Popular' },
+        { title: 'Product Three', description: 'Limited edition exclusive release.', price: '$99.99', image: resolvePicsumUrl(400, 400, 332), badge: 'Limited' },
+        { title: 'Product Four', description: 'Everyday essential at a great price.', price: '$29.99', image: resolvePicsumUrl(400, 400, 333) },
+      ],
+      ctaText: 'Shop Now',
+    },
+    'featured-products': {
+      headline: 'Featured Products',
+      subheadline: 'Hand-picked favorites from our collection.',
+      items: [
+        { title: 'Premium Item', description: 'Our most popular product this season.', price: '$129.99', image: resolvePicsumUrl(600, 400, 334), badge: 'Featured' },
+        { title: 'Classic Essential', description: 'A timeless piece for every wardrobe.', price: '$89.99', image: resolvePicsumUrl(600, 400, 335) },
+        { title: 'New Arrival', description: 'Fresh from our latest collection.', price: '$69.99', image: resolvePicsumUrl(600, 400, 336), badge: 'New' },
+      ],
+    },
+    // ─── Blog Sections ───────────────────────────────────────────────────
+    'blog-grid': {
+      headline: 'Latest Articles',
+      subheadline: 'Insights, tips, and stories from our team.',
+      items: [
+        { title: 'Getting Started with Modern Web Design', description: 'Learn the fundamentals of creating beautiful, responsive websites.', image: resolvePicsumUrl(600, 400, 340), badge: 'Design' },
+        { title: '10 Tips for Better User Experience', description: 'Practical advice to improve usability and delight your users.', image: resolvePicsumUrl(600, 400, 341), badge: 'UX' },
+        { title: 'The Future of Digital Products', description: 'Exploring trends that will shape the next generation of products.', image: resolvePicsumUrl(600, 400, 342), badge: 'Trends' },
+      ],
+    },
+    'post-grid': {
+      headline: 'Recent Posts',
+      subheadline: 'Stay up to date with our latest content.',
+      items: [
+        { title: 'Building Scalable Systems', description: 'Architecture patterns for growth.', image: resolvePicsumUrl(600, 400, 343), badge: 'Engineering' },
+        { title: 'Design Principles That Work', description: 'Timeless principles for modern interfaces.', image: resolvePicsumUrl(600, 400, 344), badge: 'Design' },
+        { title: 'Launching Your First Product', description: 'A step-by-step guide to going live.', image: resolvePicsumUrl(600, 400, 345), badge: 'Startup' },
+      ],
+    },
+    'featured-posts': {
+      headline: 'Featured Stories',
+      subheadline: 'Our most popular articles.',
+      items: [
+        { title: 'How We Built Our Platform', description: 'The story behind our technology and the decisions that shaped it.', image: resolvePicsumUrl(800, 400, 346), badge: 'Featured' },
+        { title: 'Customer Success Story', description: 'How one company transformed their workflow with our tools.', image: resolvePicsumUrl(800, 400, 347), badge: 'Case Study' },
+      ],
+    },
+    // ─── Portfolio Sections ──────────────────────────────────────────────
+    'project-grid': {
+      headline: 'Our Work',
+      subheadline: 'Selected projects we are proud of.',
+      items: [
+        { title: 'Brand Redesign', description: 'Complete visual identity overhaul for a tech startup.', image: resolvePicsumUrl(600, 400, 350), badge: 'Branding' },
+        { title: 'E-commerce Platform', description: 'Full-stack web application with 50K+ monthly users.', image: resolvePicsumUrl(600, 400, 351), badge: 'Web App' },
+        { title: 'Mobile App', description: 'Cross-platform app with 4.8-star rating on both stores.', image: resolvePicsumUrl(600, 400, 352), badge: 'Mobile' },
+        { title: 'Dashboard UI', description: 'Analytics dashboard for real-time data visualization.', image: resolvePicsumUrl(600, 400, 353), badge: 'UI/UX' },
+      ],
+    },
+    'featured-projects': {
+      headline: 'Featured Projects',
+      subheadline: 'Showcase of our best work.',
+      items: [
+        { title: 'Flagship Project', description: 'Our award-winning project that pushed boundaries.', image: resolvePicsumUrl(800, 500, 354), badge: 'Award Winner' },
+        { title: 'Innovation Lab', description: 'Experimental project exploring new technologies.', image: resolvePicsumUrl(800, 500, 355), badge: 'Innovation' },
+      ],
+    },
+    'skills': {
+      headline: 'Our Expertise',
+      subheadline: 'Technologies and skills we excel at.',
+      items: [
+        { title: 'Frontend Development', description: 'React, Vue, Angular, TypeScript' },
+        { title: 'Backend Development', description: 'Node.js, Python, Go, Rust' },
+        { title: 'Design', description: 'Figma, UI/UX, Design Systems' },
+        { title: 'DevOps', description: 'Docker, Kubernetes, CI/CD, AWS' },
+      ],
+    },
+    'sidebar': {
+      headline: 'Quick Links',
+      subheadline: 'Navigate to popular sections.',
+      items: [
+        { title: 'About Us', description: 'Learn more about our mission.', link: '#about' },
+        { title: 'Services', description: 'What we offer.', link: '#services' },
+        { title: 'Contact', description: 'Get in touch.', link: '#contact' },
+      ],
+    },
   };
 
-  return (
-    defaults[sectionType] || {
-      headline: sectionType
-        .split('-')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' '),
-      subheadline: 'Content for this section.',
-      items: [],
+  if (defaults[sectionType]) {
+    return defaults[sectionType];
+  }
+
+  // Try intelligent content generation for unknown section types
+  try {
+    const generated = generateContent({
+      sectionType,
+      industry,
+      tone: 'professional',
+    });
+    if (generated.content.headline) {
+      return {
+        headline: generated.content.headline,
+        subheadline: generated.content.subheadline || '',
+        items: generated.content.items || [],
+      };
     }
-  );
+  } catch {
+    // Fall through to generic fallback
+  }
+
+  const sectionLabel = sectionType
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+
+  return {
+    headline: sectionLabel,
+    subheadline: `Explore our ${sectionLabel.toLowerCase()} to find exactly what you're looking for.`,
+    items: [],
+  };
 }
 
 // ─── Section Generators (Vanilla HTML) ──────────────────────────────────────
@@ -1288,7 +1570,7 @@ function generateFooterSection(
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand">
-        <h3 class="footer-logo">${content.headline || 'Company'}</h3>
+        <h3 class="footer-logo">${ctx?.brandName || content.headline || 'Company'}</h3>
         <p class="footer-description">${content.description || 'Building the future, one product at a time.'}</p>
       </div>
       <div class="footer-links">
@@ -1405,183 +1687,176 @@ function generateNavigationSection(
 ): { html: string; css: string; js: string } {
   const navCta = instantiateButton(ctx?.uiverse, 'Get Started', { variant: 'primary', href: '#', extraClasses: 'nav-cta' });
 
+  // Use real page links from context when available, otherwise fall back to section anchors
+  const brandName = ctx?.brandName || content.headline || 'Brand';
+  let navLinksHtml: string;
+
+  if (ctx?.pages && ctx.pages.length > 0) {
+    // Real multi-page navigation — generate links to actual pages
+    navLinksHtml = ctx.pages.map(page => {
+      const href = page.isHomepage ? 'index.html' : `${page.slug}.html`;
+      const activeClass = ctx.currentPageSlug === page.slug ? ' active' : '';
+      return `      <li><a href="${href}" class="nav-link${activeClass}">${page.name}</a></li>`;
+    }).join('\n');
+  } else {
+    // Single-page fallback — generate anchor links to sections on the current page
+    navLinksHtml = `      <li><a href="#features" class="nav-link">Features</a></li>
+      <li><a href="#pricing" class="nav-link">Pricing</a></li>
+      <li><a href="#testimonials" class="nav-link">Testimonials</a></li>
+      <li><a href="#contact" class="nav-link">Contact</a></li>`;
+  }
+
   const html = `<!-- Navigation -->
-<header class="site-header" id="navbar">
-  <nav class="navbar" role="navigation" aria-label="Main navigation">
-    <div class="container nav-container">
-      <a href="/" class="nav-brand" aria-label="Home">
-        <strong>${content.headline || 'Brand'}</strong>
-      </a>
-      <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" type="button">
-        <span class="nav-toggle-bar"></span>
-        <span class="nav-toggle-bar"></span>
-        <span class="nav-toggle-bar"></span>
-      </button>
-      <div class="nav-menu" role="menubar">
-        <a href="#features" class="nav-link" role="menuitem">Features</a>
-        <a href="#pricing" class="nav-link" role="menuitem">Pricing</a>
-        <a href="#testimonials" class="nav-link" role="menuitem">Testimonials</a>
-        <a href="#contact" class="nav-link" role="menuitem">Contact</a>
-        ${navCta}
-      </div>
+<nav class="navbar" role="navigation" aria-label="Main navigation">
+  <div class="nav-container">
+    <a href="index.html" class="nav-brand" aria-label="Home">
+      <strong>${brandName}</strong>
+    </a>
+    <div class="nav-hamburger" aria-label="Toggle menu">
+      <span></span>
+      <span></span>
+      <span></span>
     </div>
-  </nav>
-</header>`;
+    <ul class="nav-links">
+${navLinksHtml}
+      <li>${navCta}</li>
+    </ul>
+  </div>
+</nav>`;
 
-  const css = `/* Navigation */
-.site-header {
+  const css = `/* Navigation — unified with generate-full-page System A classes */
+.navbar {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 0; left: 0; right: 0;
   z-index: 1000;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--color-neutral-200);
-  transition: background var(--transition-base), box-shadow var(--transition-base);
+  padding: var(--space-md) 0;
+  background: rgba(248, 247, 247, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background var(--transition-base), box-shadow var(--transition-base), padding var(--transition-base);
 }
-
-.site-header.scrolled {
+.navbar.scrolled {
+  padding: var(--space-sm) 0;
+  background: rgba(248, 247, 247, 0.98);
   box-shadow: var(--shadow-md);
 }
-
 .nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-md) var(--space-xl);
-  max-width: 1280px;
-  margin: 0 auto;
 }
-
 .nav-brand {
   font-family: var(--font-heading);
-  font-size: var(--fs-h4);
-  color: var(--color-neutral-900);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-bold);
+  color: var(--color-primary);
 }
-
-.nav-menu {
+.nav-links {
   display: flex;
-  align-items: center;
   gap: var(--space-xl);
+  align-items: center;
 }
-
 .nav-link {
   font-family: var(--font-body);
   font-size: var(--fs-body);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-neutral-700);
+  padding: var(--space-xs) 0;
   position: relative;
   transition: color var(--transition-fast);
 }
-
 .nav-link::after {
   content: '';
   position: absolute;
-  bottom: -4px;
-  left: 0;
-  width: 0;
-  height: 2px;
+  bottom: -2px; left: 0;
+  width: 0; height: 2px;
   background: var(--color-primary);
-  transition: width var(--transition-base) cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width var(--transition-base);
 }
+.nav-link:hover, .nav-link.active { color: var(--color-primary); }
+.nav-link:hover::after, .nav-link.active::after { width: 100%; }
 
-.nav-link:hover {
-  color: var(--color-primary);
-}
-
-.nav-link:hover::after {
-  width: 100%;
-}
-
-.nav-toggle {
+.nav-hamburger {
   display: none;
   flex-direction: column;
   gap: 5px;
-  background: none;
-  border: none;
   cursor: pointer;
   padding: var(--space-xs);
+  z-index: 1001;
 }
-
-.nav-toggle-bar {
+.nav-hamburger span {
   display: block;
-  width: 24px;
-  height: 2px;
+  width: 24px; height: 2px;
   background: var(--color-neutral-900);
-  border-radius: 2px;
   transition: transform var(--transition-base), opacity var(--transition-fast);
 }
+.nav-hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+.nav-hamburger.active span:nth-child(2) { opacity: 0; }
+.nav-hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
 
-.nav-toggle.active .nav-toggle-bar:nth-child(1) {
-  transform: rotate(45deg) translate(5px, 5px);
-}
-
-.nav-toggle.active .nav-toggle-bar:nth-child(2) {
-  opacity: 0;
-}
-
-.nav-toggle.active .nav-toggle-bar:nth-child(3) {
-  transform: rotate(-45deg) translate(5px, -5px);
-}
+.nav-cta { margin-left: var(--space-md); }
 
 @media (max-width: 768px) {
-  .nav-toggle {
-    display: flex;
-  }
-  .nav-menu {
+  .nav-hamburger { display: flex; }
+  .nav-links {
     position: fixed;
-    top: 60px;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    flex-direction: column;
+    top: 0; right: -100%;
+    width: 280px; height: 100vh;
     background: var(--color-neutral-50);
-    padding: var(--space-2xl);
+    flex-direction: column;
+    padding: var(--space-5xl) var(--space-xl) var(--space-xl);
     gap: var(--space-lg);
-    transform: translateX(100%);
-    transition: transform var(--transition-base) cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: var(--shadow-xl);
+    transition: right var(--transition-slow);
+    z-index: 1000;
   }
-  .nav-menu.open {
-    transform: translateX(0);
-  }
-  .nav-link {
-    font-size: var(--fs-h4);
-  }
+  .nav-links.open { right: 0; }
+  body.menu-open { overflow: hidden; }
 }`;
 
   const js = `// Navigation
-const navToggle = document.querySelector('.nav-toggle');
-const navMenu = document.querySelector('.nav-menu');
-const header = document.querySelector('.site-header');
+var hamburger = document.querySelector('.nav-hamburger');
+var navLinks = document.querySelector('.nav-links');
+var navbar = document.querySelector('.navbar');
 
-if (navToggle && navMenu) {
-  navToggle.addEventListener('click', () => {
-    const isOpen = navMenu.classList.toggle('open');
-    navToggle.classList.toggle('active');
-    navToggle.setAttribute('aria-expanded', isOpen.toString());
+// Mobile hamburger toggle
+if (hamburger && navLinks) {
+  hamburger.addEventListener('click', function() {
+    navLinks.classList.toggle('open');
+    hamburger.classList.toggle('active');
+    document.body.classList.toggle('menu-open');
+  });
+  navLinks.querySelectorAll('.nav-link').forEach(function(link) {
+    link.addEventListener('click', function() {
+      navLinks.classList.remove('open');
+      hamburger.classList.remove('active');
+      document.body.classList.remove('menu-open');
+    });
   });
 }
 
-// Sticky header shadow
-if (header) {
-  window.addEventListener('scroll', () => {
-    header.classList.toggle('scrolled', window.scrollY > 10);
+// Sticky navbar
+if (navbar) {
+  window.addEventListener('scroll', function() {
+    navbar.classList.toggle('scrolled', window.scrollY > 50);
   }, { passive: true });
 }
 
 // Smooth scroll for anchor links
-document.querySelectorAll('a[href^="#"]').forEach(link => {
-  link.addEventListener('click', (e) => {
-    const href = link.getAttribute('href');
+document.querySelectorAll('a[href^="#"]').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    var href = link.getAttribute('href');
     if (href) {
-      const target = document.querySelector(href);
+      var target = document.querySelector(href);
       if (target) {
         e.preventDefault();
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        if (navMenu) navMenu.classList.remove('open');
-        if (navToggle) navToggle.classList.remove('active');
+        if (navLinks) navLinks.classList.remove('open');
+        if (hamburger) hamburger.classList.remove('active');
+        document.body.classList.remove('menu-open');
       }
     }
   });
@@ -2137,7 +2412,891 @@ function generateAboutSection(
   return { html, css, js: '' };
 }
 
+// ─── Menu Preview Section ────────────────────────────────────────────────────
+
+function generateMenuPreviewSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const images = ctx?.images || [];
+
+  const cardsHtml = items.map((item, i) => {
+    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 301 + i);
+    return instantiateCard(ctx?.uiverse, {
+      title: item.title,
+      description: item.description,
+      image: imgSrc,
+      badge: item.badge,
+      price: item.price || '',
+      index: i,
+    }, {
+      extraClasses: 'menu-prev-card',
+      animateDelay: i * 100,
+    });
+  }).join('\n');
+
+  const ctaBtn = content.ctaText
+    ? instantiateButton(ctx?.uiverse, content.ctaText, { variant: 'primary', href: '#menu' })
+    : '';
+
+  const html = `<!-- Menu Preview Section -->
+<section class="menu-prev-section section" id="menu-preview">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Our Signature Dishes'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="menu-prev-grid stagger-children">
+${cardsHtml}
+    </div>
+    ${ctaBtn ? `<div class="menu-prev-cta animate-on-scroll">${ctaBtn}</div>` : ''}
+  </div>
+</section>`;
+
+  const css = `/* Menu Preview Section — layout only; card/button styling from UIverse components */
+.menu-prev-section { padding: var(--space-5xl) 0; }
+.menu-prev-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-2xl);
+}
+.menu-prev-cta { text-align: center; margin-top: var(--space-3xl); }
+@media (max-width: 480px) {
+  .menu-prev-grid { grid-template-columns: 1fr; }
+}`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Menu Items Section (with category filtering) ────────────────────────────
+
+function generateMenuItemsSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+
+  // Extract unique categories from item badges
+  const categories = ['all', ...new Set(items.map(item => item.badge || 'other').filter(Boolean))];
+
+  // Use instantiateButton for filter buttons, inject data-filter attribute
+  const filterBtns = categories.map((cat, i) => {
+    const label = cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1);
+    const btn = instantiateButton(ctx?.uiverse, label, {
+      variant: i === 0 ? 'primary' : 'secondary',
+      extraClasses: `menu-filter-btn${i === 0 ? ' active' : ''}`,
+    });
+    // Inject data-filter attribute on the root element
+    return btn.replace(/^<(\w+)/, `<$1 data-filter="${cat}"`);
+  }).join('\n          ');
+
+  // Use instantiateCard for menu items, inject data-category for JS filtering
+  const menuItemsHtml = items.map((item, i) => {
+    const imgSrc = item.image || resolvePicsumUrl(200, 200, 400 + i);
+    const category = item.badge || 'other';
+    const cardHtml = instantiateCard(ctx?.uiverse, {
+      title: item.title,
+      description: item.description,
+      image: imgSrc,
+      badge: item.badge,
+      price: item.price || '',
+      index: i,
+    }, {
+      extraClasses: 'menu-item',
+      animateDelay: (i % 4) * 80,
+    });
+    // Inject data-category attribute on the root element for filtering
+    return cardHtml.replace(/^<(\w+)/, `<$1 data-category="${category}"`);
+  }).join('\n');
+
+  const html = `<!-- Menu Items Section -->
+<section class="menu-items-section section" id="menu-items">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Our Menu'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="menu-filters animate-on-scroll">
+          ${filterBtns}
+    </div>
+    <div class="menu-grid stagger-children" id="menuGrid">
+${menuItemsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Menu Items Section — layout only; card/button styling from UIverse components */
+.menu-items-section { padding: var(--space-5xl) 0; }
+.menu-filters {
+  display: flex; justify-content: center; gap: var(--space-md);
+  margin-bottom: var(--space-3xl); flex-wrap: wrap;
+}
+.menu-filter-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-xl);
+}
+/* Override card layout to horizontal for menu items */
+.menu-item { display: flex; gap: var(--space-lg); }
+.menu-item .card-image { width: 90px; height: 90px; flex-shrink: 0; }
+.menu-item.hidden { display: none; }
+@media (max-width: 768px) { .menu-grid { grid-template-columns: 1fr; } }`;
+
+  const js = `// Menu category filtering
+document.querySelectorAll('.menu-filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.menu-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var filter = btn.getAttribute('data-filter');
+    document.querySelectorAll('.menu-item').forEach(function(item) {
+      if (filter === 'all' || item.getAttribute('data-category') === filter) {
+        item.classList.remove('hidden');
+      } else {
+        item.classList.add('hidden');
+      }
+    });
+  });
+});`;
+
+  return { html, css, js };
+}
+
+// ─── Menu Categories Section ─────────────────────────────────────────────────
+
+function generateMenuCategoriesSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  // Menu categories is essentially the filter tabs — reuse menu-items logic
+  return generateMenuItemsSection(content, sectionIndex, ctx);
+}
+
+// ─── Specials Section ────────────────────────────────────────────────────────
+
+function generateSpecialsSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const images = ctx?.images || [];
+
+  const cardsHtml = items.map((item, i) => {
+    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 305 + i);
+    return instantiateCard(ctx?.uiverse, {
+      title: item.title,
+      description: item.description,
+      image: imgSrc,
+      badge: item.badge,
+      price: item.price,
+      index: i,
+    }, {
+      extraClasses: 'special-card',
+      animateDelay: i * 150,
+    });
+  }).join('\n');
+
+  const html = `<!-- Specials Section -->
+<section class="specials-section section" id="specials">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || "Chef's Specials"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="specials-grid stagger-children">
+${cardsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Specials Section — layout only; card styling from UIverse components */
+.specials-section { padding: var(--space-5xl) 0; }
+.specials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-2xl);
+}
+.special-card { border: 2px solid var(--color-accent); }
+.special-card .badge {
+  animation: pulse-badge 2s ease-in-out infinite;
+}
+@keyframes pulse-badge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Gallery Section ─────────────────────────────────────────────────────────
+
+function generateGallerySection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const images = ctx?.images || [];
+
+  const galleryItems = items.map((item, i) => {
+    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 310 + i);
+    const fullSrc = imgSrc.replace('/600/400', '/1200/800');
+    return `
+        <div class="gallery-item animate-on-scroll" data-src="${fullSrc}" style="transition-delay: ${i * 80}ms">
+          <img src="${imgSrc}" alt="${item.title || 'Gallery image ' + (i + 1)}" width="600" height="400" loading="lazy" decoding="async">
+          <div class="gallery-overlay">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="32" height="32"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>
+          </div>
+        </div>`;
+  }).join('\n');
+
+  const html = `<!-- Gallery Section -->
+<section class="gallery-section section" id="gallery">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Our Gallery'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="gallery-grid stagger-children">
+${galleryItems}
+    </div>
+  </div>
+</section>
+<!-- Lightbox Modal -->
+<div class="lightbox" id="lightbox" role="dialog" aria-label="Image gallery lightbox">
+  <div class="lightbox-content">
+    <button class="lightbox-close" aria-label="Close lightbox">&times;</button>
+    <button class="lightbox-nav lightbox-prev" aria-label="Previous image">&#8249;</button>
+    <img src="" alt="Full size gallery image" id="lightboxImg">
+    <button class="lightbox-nav lightbox-next" aria-label="Next image">&#8250;</button>
+  </div>
+</div>`;
+
+  const css = `/* Gallery Section */
+.gallery-section { padding: var(--space-5xl) 0; }
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 250px;
+  gap: var(--space-md);
+}
+.gallery-grid .gallery-item:first-child { grid-column: span 2; grid-row: span 2; }
+.gallery-item {
+  position: relative; border-radius: var(--radius-md);
+  overflow: hidden; cursor: pointer;
+}
+.gallery-item img {
+  width: 100%; height: 100%; object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gallery-item:hover img { transform: scale(1.08); }
+.gallery-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0);
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--transition-base);
+}
+.gallery-overlay svg { color: #fff; opacity: 0; transform: scale(0.8); transition: all var(--transition-base); }
+.gallery-item:hover .gallery-overlay { background: rgba(0,0,0,0.4); }
+.gallery-item:hover .gallery-overlay svg { opacity: 1; transform: scale(1); }
+/* Lightbox */
+.lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.95); z-index: 2000;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; visibility: hidden;
+  transition: all var(--transition-base);
+}
+.lightbox.active { opacity: 1; visibility: visible; }
+.lightbox-content { position: relative; max-width: 90vw; max-height: 85vh; }
+.lightbox-content img {
+  max-width: 100%; max-height: 85vh; object-fit: contain;
+  border-radius: var(--radius-md);
+  transform: scale(0.9);
+  transition: transform var(--transition-base) cubic-bezier(0.16, 1, 0.3, 1);
+}
+.lightbox.active .lightbox-content img { transform: scale(1); }
+.lightbox-close {
+  position: absolute; top: -50px; right: 0;
+  background: none; border: none; color: #fff;
+  font-size: 2rem; cursor: pointer; padding: var(--space-sm);
+  transition: color var(--transition-fast);
+}
+.lightbox-close:hover { color: var(--color-primary); }
+.lightbox-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: rgba(255,255,255,0.1); border: none; color: #fff;
+  width: 50px; height: 50px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 1.5rem;
+  transition: all var(--transition-fast);
+  backdrop-filter: blur(10px);
+}
+.lightbox-nav:hover { background: var(--color-primary); }
+.lightbox-prev { left: -70px; }
+.lightbox-next { right: -70px; }
+@media (max-width: 768px) {
+  .gallery-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 200px; }
+  .gallery-grid .gallery-item:first-child { grid-column: span 2; grid-row: span 1; }
+  .lightbox-prev { left: 10px; }
+  .lightbox-next { right: 10px; }
+}`;
+
+  const js = `// Gallery Lightbox
+(function() {
+  var lightbox = document.getElementById('lightbox');
+  if (!lightbox) return;
+  var lightboxImg = document.getElementById('lightboxImg');
+  var items = document.querySelectorAll('.gallery-item[data-src]');
+  var images = Array.from(items).map(function(el) { return el.getAttribute('data-src'); });
+  var currentIndex = 0;
+  function openLightbox(i) {
+    currentIndex = i;
+    lightboxImg.src = images[currentIndex];
+    lightbox.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeLightbox() {
+    lightbox.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+  function navigate(dir) {
+    currentIndex = (currentIndex + dir + images.length) % images.length;
+    lightboxImg.style.opacity = '0';
+    setTimeout(function() {
+      lightboxImg.src = images[currentIndex];
+      lightboxImg.style.opacity = '1';
+    }, 200);
+  }
+  items.forEach(function(item, i) { item.addEventListener('click', function() { openLightbox(i); }); });
+  lightbox.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+  lightbox.querySelector('.lightbox-prev').addEventListener('click', function() { navigate(-1); });
+  lightbox.querySelector('.lightbox-next').addEventListener('click', function() { navigate(1); });
+  lightbox.addEventListener('click', function(e) { if (e.target === lightbox) closeLightbox(); });
+  document.addEventListener('keydown', function(e) {
+    if (!lightbox.classList.contains('active')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') navigate(-1);
+    if (e.key === 'ArrowRight') navigate(1);
+  });
+})();`;
+
+  return { html, css, js };
+}
+
+// ─── Photo Grid Section (alias of gallery) ──────────────────────────────────
+
+function generatePhotoGridSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  return generateGallerySection(content, sectionIndex, ctx);
+}
+
+// ─── Reservation Form Section ────────────────────────────────────────────────
+
+function generateReservationFormSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  // Use instantiateInput for text/email/tel/date inputs
+  const nameInput = instantiateInput(ctx?.uiverse, { name: 'res-name', label: 'Full Name', placeholder: 'John Doe', required: true, id: 'res-name', type: 'text' });
+  const emailInput = instantiateInput(ctx?.uiverse, { name: 'res-email', label: 'Email', placeholder: 'john@example.com', required: true, id: 'res-email', type: 'email' });
+  const phoneInput = instantiateInput(ctx?.uiverse, { name: 'res-phone', label: 'Phone', placeholder: '+1 (555) 000-0000', id: 'res-phone', type: 'tel' });
+  const dateInput = instantiateInput(ctx?.uiverse, { name: 'res-date', label: 'Date', id: 'res-date', type: 'date', required: true });
+  const submitBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Book Now', { variant: 'primary', extraClasses: 'reservation-submit' });
+
+  const html = `<!-- Reservation Form Section -->
+<section class="reservation-section section" id="reservation-form">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Reserve a Table'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="reservation-grid">
+      <div class="reservation-form-wrap animate-from-left">
+        <form class="reservation-form" id="reservationForm" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              ${nameInput}
+              <div class="form-error">Please enter your name</div>
+            </div>
+            <div class="form-group">
+              ${emailInput}
+              <div class="form-error">Please enter a valid email</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              ${phoneInput}
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="res-guests">Guests</label>
+              <select id="res-guests" class="form-input">
+                <option>1 Guest</option><option>2 Guests</option><option selected>3 Guests</option>
+                <option>4 Guests</option><option>5 Guests</option><option>6+ Guests</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              ${dateInput}
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="res-time">Time</label>
+              <select id="res-time" class="form-input">
+                <option>5:30 PM</option><option>6:00 PM</option><option selected>7:00 PM</option>
+                <option>7:30 PM</option><option>8:00 PM</option><option>8:30 PM</option><option>9:00 PM</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="res-message">Special Requests</label>
+            <textarea id="res-message" class="form-input form-textarea" placeholder="Dietary requirements, celebrations, seating preferences..."></textarea>
+          </div>
+          <div class="form-submit-wrap" style="width:100%;">${submitBtn}</div>
+        </form>
+        <div class="form-success" id="formSuccess">Reservation confirmed! We'll send a confirmation to your email.</div>
+      </div>
+      <div class="reservation-info animate-from-right">
+        <div class="res-info-card">
+          <h3>Opening Hours</h3>
+          <ul class="res-hours">
+            <li><span>Monday</span><span>Closed</span></li>
+            <li><span>Tue – Thu</span><span>5:30 – 10:00 PM</span></li>
+            <li><span>Fri – Sat</span><span>5:30 – 11:00 PM</span></li>
+            <li><span>Sunday</span><span>5:00 – 9:30 PM</span></li>
+          </ul>
+        </div>
+        <div class="res-info-card">
+          <h3>Contact</h3>
+          <p>+1 (212) 555-0189</p>
+          <p>hello@restaurant.com</p>
+          <p>742 Culinary Lane, New York, NY 10012</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Reservation Section — layout + select/textarea fallback; input/button styling from UIverse components */
+.reservation-section { padding: var(--space-5xl) 0; }
+.reservation-grid {
+  display: grid; grid-template-columns: 1.5fr 1fr;
+  gap: var(--space-3xl); align-items: start;
+}
+.reservation-form-wrap {
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-xl);
+  padding: var(--space-2xl);
+}
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); }
+.form-group { margin-bottom: var(--space-lg); }
+.form-label {
+  display: block; font-size: var(--fs-small); font-weight: 600;
+  color: var(--color-neutral-700); margin-bottom: var(--space-sm);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+/* Fallback styling for select/textarea elements not covered by instantiateInput */
+.form-input {
+  width: 100%; padding: var(--space-md) var(--space-lg);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-900);
+  font-size: var(--fs-body);
+  transition: all var(--transition-fast);
+}
+.form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.15); }
+.form-textarea { min-height: 100px; resize: vertical; }
+.form-submit-wrap { text-align: center; }
+.form-submit-wrap .btn { width: 100%; justify-content: center; }
+.form-error { font-size: var(--fs-caption); color: var(--color-error); margin-top: var(--space-xs); display: none; }
+.form-success {
+  background: rgba(5, 150, 105, 0.1); color: var(--color-success);
+  padding: var(--space-lg); border-radius: var(--radius-md);
+  text-align: center; font-weight: 600; display: none; margin-top: var(--space-lg);
+}
+.res-info-card {
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
+  margin-bottom: var(--space-xl);
+}
+.res-info-card h3 {
+  font-family: var(--font-heading); font-size: var(--fs-h4);
+  color: var(--color-neutral-900); margin-bottom: var(--space-md);
+}
+.res-info-card p { color: var(--color-neutral-700); margin-bottom: var(--space-sm); }
+.res-hours { list-style: none; }
+.res-hours li {
+  display: flex; justify-content: space-between;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--color-neutral-200);
+  color: var(--color-neutral-700);
+  font-size: var(--fs-small);
+}
+.res-hours li:last-child { border-bottom: none; }
+@media (max-width: 768px) {
+  .reservation-grid { grid-template-columns: 1fr; }
+  .form-row { grid-template-columns: 1fr; }
+}`;
+
+  const js = `// Reservation form validation
+(function() {
+  var form = document.getElementById('reservationForm');
+  if (!form) return;
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var valid = true;
+    var required = form.querySelectorAll('[required]');
+    required.forEach(function(input) {
+      var error = input.parentElement.querySelector('.form-error');
+      if (!input.value.trim()) {
+        input.style.borderColor = 'var(--color-error)';
+        if (error) error.style.display = 'block';
+        valid = false;
+      } else {
+        input.style.borderColor = '';
+        if (error) error.style.display = 'none';
+      }
+    });
+    var email = document.getElementById('res-email');
+    if (email && email.value && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.value)) {
+      email.style.borderColor = 'var(--color-error)';
+      var emailErr = email.parentElement.querySelector('.form-error');
+      if (emailErr) emailErr.style.display = 'block';
+      valid = false;
+    }
+    if (valid) {
+      form.style.display = 'none';
+      var success = document.getElementById('formSuccess');
+      if (success) success.style.display = 'block';
+      setTimeout(function() {
+        form.reset(); form.style.display = '';
+        if (success) success.style.display = 'none';
+      }, 4000);
+    }
+  });
+})();`;
+
+  return { html, css, js };
+}
+
+// ─── Hours Section ───────────────────────────────────────────────────────────
+
+function generateHoursSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const hoursHtml = items.map(item =>
+    `<li><span>${item.title}</span><span>${item.description}</span></li>`
+  ).join('\n            ');
+
+  const html = `<!-- Hours Section -->
+<section class="hours-section section" id="hours">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Opening Hours'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="hours-card animate-on-scroll">
+      <ul class="hours-list">
+            ${hoursHtml}
+      </ul>
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Hours Section */
+.hours-section { padding: var(--space-5xl) 0; }
+.hours-card {
+  max-width: 500px; margin: 0 auto;
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-xl);
+  padding: var(--space-2xl);
+}
+.hours-list { list-style: none; }
+.hours-list li {
+  display: flex; justify-content: space-between;
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--color-neutral-200);
+  font-size: var(--fs-body); color: var(--color-neutral-700);
+}
+.hours-list li:last-child { border-bottom: none; }
+.hours-list li span:first-child { font-weight: 600; color: var(--color-neutral-900); }`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Location Section ────────────────────────────────────────────────────────
+
+function generateLocationSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const html = `<!-- Location Section -->
+<section class="location-section section" id="location">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Find Us'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="location-card animate-on-scroll">
+      <div class="location-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="48" height="48"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      </div>
+      <p class="location-address">${content.description || '742 Culinary Lane, New York, NY 10012'}</p>
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Location Section */
+.location-section { padding: var(--space-5xl) 0; }
+.location-card {
+  max-width: 500px; margin: 0 auto; text-align: center;
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3xl);
+}
+.location-icon { margin-bottom: var(--space-lg); color: var(--color-primary); }
+.location-icon svg { margin: 0 auto; }
+.location-address {
+  font-size: var(--fs-h4); color: var(--color-neutral-700);
+  line-height: 1.6;
+}`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Product Grid Section ────────────────────────────────────────────────────
+
+function generateProductGridSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const images = ctx?.images || [];
+
+  const productsHtml = items.map((item, i) => {
+    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(400, 400, 330 + i);
+    return instantiateCard(ctx?.uiverse, {
+      title: item.title,
+      description: item.description,
+      image: imgSrc,
+      badge: item.badge,
+      price: item.price || '',
+      link: item.link || '#',
+      index: i,
+    }, {
+      extraClasses: 'product-card',
+      animateDelay: i * 100,
+    });
+  }).join('\n');
+
+  const html = `<!-- Product Grid Section -->
+<section class="product-grid-section section" id="product-grid">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Our Products'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="product-grid stagger-children">
+${productsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Product Grid Section — layout only; card styling from UIverse components */
+.product-grid-section { padding: var(--space-5xl) 0; }
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-2xl);
+}`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Blog Grid Section ───────────────────────────────────────────────────────
+
+function generateBlogGridSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const images = ctx?.images || [];
+
+  const postsHtml = items.map((item, i) => {
+    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 340 + i);
+    return instantiateCard(ctx?.uiverse, {
+      title: item.title,
+      description: item.description,
+      image: imgSrc,
+      badge: item.badge,
+      link: item.link || '#',
+      index: i,
+    }, {
+      extraClasses: 'blog-card',
+      animateDelay: i * 100,
+    });
+  }).join('\n');
+
+  const html = `<!-- Blog Grid Section -->
+<section class="blog-grid-section section" id="blog-grid">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Latest Articles'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="blog-grid stagger-children">
+${postsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Blog Grid Section — layout only; card styling from UIverse components */
+.blog-grid-section { padding: var(--space-5xl) 0; }
+.blog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-2xl);
+}`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Project Grid Section ────────────────────────────────────────────────────
+
+function generateProjectGridSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const images = ctx?.images || [];
+
+  const projectsHtml = items.map((item, i) => {
+    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 350 + i);
+    return instantiateCard(ctx?.uiverse, {
+      title: item.title,
+      description: item.description,
+      image: imgSrc,
+      badge: item.badge,
+      index: i,
+    }, {
+      extraClasses: 'project-card',
+      animateDelay: i * 100,
+    });
+  }).join('\n');
+
+  const html = `<!-- Project Grid Section -->
+<section class="project-grid-section section" id="project-grid">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Our Work'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="project-grid stagger-children">
+${projectsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Project Grid Section — layout + overlay effect on UIverse cards */
+.project-grid-section { padding: var(--space-5xl) 0; }
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-xl);
+}
+/* Override UIverse card to create image-overlay layout */
+.project-card { position: relative; overflow: hidden; border-radius: var(--radius-lg); }
+.project-card .card-image { position: absolute; inset: 0; height: 100%; }
+.project-card .card-image img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease; }
+.project-card:hover .card-image img { transform: scale(1.05); }
+.project-card .card-content {
+  position: relative; z-index: 1; min-height: 300px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: var(--space-xl);
+}
+.project-card::after {
+  content: ''; position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent 60%);
+  transition: background var(--transition-base);
+  pointer-events: none;
+}
+.project-card:hover::after { background: linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.2) 70%); }
+.project-card .card-title { color: #fff; position: relative; z-index: 1; }
+.project-card .card-description { color: rgba(255,255,255,0.8); position: relative; z-index: 1; }
+.project-card .badge {
+  position: relative; z-index: 1;
+  display: inline-block; width: fit-content;
+  background: var(--color-primary); color: #fff;
+  font-size: var(--fs-caption); font-weight: 700;
+  text-transform: uppercase; padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm); margin-bottom: var(--space-sm);
+}`;
+
+  return { html, css, js: '' };
+}
+
 // ─── Generic fallback ───────────────────────────────────────────────────────
+
+// Meaningful fallback descriptions for section types without dedicated generators
+const GENERIC_SECTION_CONTENT: Record<string, { headline: string; description: string }> = {
+  'categories': { headline: 'Browse Categories', description: 'Explore our curated categories to find exactly what you\'re looking for.' },
+  'filters': { headline: 'Refine Your Search', description: 'Use filters to narrow down results by price, rating, category, and more.' },
+  'pagination': { headline: 'Browse More', description: 'Navigate through our full collection of products and services.' },
+  'product-gallery': { headline: 'Product Gallery', description: 'View detailed images from every angle to make an informed choice.' },
+  'product-info': { headline: 'Product Details', description: 'Complete specifications, materials, and sizing information.' },
+  'reviews': { headline: 'Customer Reviews', description: 'Read authentic reviews from verified customers who purchased this product.' },
+  'related-products': { headline: 'You May Also Like', description: 'Curated recommendations based on your current selection.' },
+  'cart-items': { headline: 'Your Shopping Cart', description: 'Review your selected items before proceeding to checkout.' },
+  'cart-summary': { headline: 'Order Summary', description: 'Your subtotal, shipping, and estimated total at a glance.' },
+  'recommended': { headline: 'Recommended For You', description: 'Handpicked suggestions based on your shopping preferences.' },
+  'sidebar': { headline: 'Quick Navigation', description: 'Jump to specific sections or filter content.' },
+  'social-links': { headline: 'Connect With Us', description: 'Follow us on social media for the latest updates and behind-the-scenes content.' },
+  'mission-values': { headline: 'Our Mission & Values', description: 'The principles that guide everything we do.' },
+  'milestones': { headline: 'Our Journey', description: 'Key moments that shaped who we are today.' },
+  'company-story': { headline: 'Our Story', description: 'How it all began and where we\'re headed next.' },
+  'process': { headline: 'Our Process', description: 'A transparent look at how we deliver results.' },
+  'case-studies': { headline: 'Case Studies', description: 'Real results from real clients — see the impact of our work.' },
+  'office-locations': { headline: 'Our Offices', description: 'Find the location nearest to you.' },
+  'bio': { headline: 'About the Author', description: 'Learn more about the person behind the content.' },
+  'experience': { headline: 'Experience', description: 'Professional background and expertise.' },
+  'article-content': { headline: 'Article', description: 'Full article content.' },
+  'author-bio': { headline: 'About the Author', description: 'Background and expertise of the author.' },
+  'related-posts': { headline: 'Related Articles', description: 'More articles you might enjoy reading.' },
+  'comments': { headline: 'Comments', description: 'Join the conversation below.' },
+  'feature-comparison': { headline: 'Compare Plans', description: 'See what\'s included in each plan at a glance.' },
+  'support-info': { headline: 'Support', description: 'Get help when you need it — our team is here for you.' },
+  'date-range': { headline: 'Date Range', description: 'Select a time period to view your data.' },
+  'export': { headline: 'Export Data', description: 'Download your data in various formats.' },
+  'chart-grid': { headline: 'Analytics Overview', description: 'Visual insights into your key performance metrics.' },
+  'profile-form': { headline: 'Profile Settings', description: 'Update your personal information and preferences.' },
+  'preferences': { headline: 'Preferences', description: 'Customize your experience.' },
+  'notifications': { headline: 'Notifications', description: 'Manage your notification preferences.' },
+  'security': { headline: 'Security', description: 'Manage passwords, two-factor authentication, and security settings.' },
+  'user-table': { headline: 'User Management', description: 'View, search, and manage user accounts.' },
+  'search': { headline: 'Search', description: 'Find what you\'re looking for quickly.' },
+  'quick-actions': { headline: 'Quick Actions', description: 'Frequently used actions at your fingertips.' },
+  'recent-activity': { headline: 'Recent Activity', description: 'See what\'s been happening across your workspace.' },
+  'map': { headline: 'Find Us', description: 'Visit us at our location — we\'d love to see you in person.' },
+};
 
 function generateGenericSection(
   sectionType: string,
@@ -2145,43 +3304,40 @@ function generateGenericSection(
   sectionIndex: number,
   ctx?: SectionContext
 ): { html: string; css: string; js: string } {
-  const html = `<!-- ${sectionType} Section -->
+  // Use provided content, then section-specific defaults, then format the type name
+  const defaults = GENERIC_SECTION_CONTENT[sectionType];
+  const headline = content.headline || (defaults?.headline) || formatSectionName(sectionType);
+  const subtitle = content.subheadline || '';
+  const description = content.description || (defaults?.description) || '';
+
+  const html = `<!-- ${formatSectionName(sectionType)} Section -->
 <section class="${sectionType}-section section" id="${sectionType}">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || sectionType}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${headline}</h2>
+      ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
     </div>
     <div class="section-content animate-on-scroll">
-      ${content.description ? `<p>${content.description}</p>` : '<p>Section content goes here.</p>'}
+      ${description ? `<p>${description}</p>` : ''}
     </div>
   </div>
 </section>`;
 
-  const css = `/* ${sectionType} Section */
-.${sectionType}-section {
+  const cssClass = sectionType;
+  const css = `/* ${formatSectionName(sectionType)} Section */
+.${cssClass}-section {
   padding: var(--space-5xl) 0;
-}
-
-.section-title {
-  font-family: var(--font-heading);
-  font-size: var(--fs-h2);
-  font-weight: 700;
-  color: var(--color-neutral-900);
-  margin-bottom: var(--space-lg);
-  text-align: center;
-}
-
-.section-subtitle {
-  font-family: var(--font-body);
-  font-size: var(--fs-h4);
-  color: var(--color-neutral-700);
-  text-align: center;
-  max-width: 600px;
-  margin: 0 auto;
 }`;
 
   return { html, css, js: '' };
+}
+
+/** Converts "cart-items" → "Cart Items", "product-gallery" → "Product Gallery" */
+function formatSectionName(sectionType: string): string {
+  return sectionType
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
 // ─── Section Generator Dispatcher ───────────────────────────────────────────
@@ -2190,6 +3346,9 @@ function generateGenericSection(
 interface SectionContext {
   uiverse: UIverseComponentMap | null;
   images: ResolvedImage[] | null;
+  pages?: PageInfo[] | null;
+  currentPageSlug?: string | null;
+  brandName?: string | null;
 }
 
 type SectionGenerator = (content: SectionContent, sectionIndex: number, ctx?: SectionContext) => { html: string; css: string; js: string };
@@ -2217,6 +3376,28 @@ const SECTION_GENERATORS: Record<string, SectionGenerator> = {
   'team': generateTeamSection,
   'about': generateAboutSection,
   'about-preview': generateAboutSection,
+  // Restaurant / Food
+  'menu-preview': generateMenuPreviewSection,
+  'menu-items': generateMenuItemsSection,
+  'menu-categories': generateMenuCategoriesSection,
+  'specials': generateSpecialsSection,
+  'reservation-form': generateReservationFormSection,
+  'hours': generateHoursSection,
+  'location': generateLocationSection,
+  // Gallery
+  'gallery': generateGallerySection,
+  'photo-grid': generatePhotoGridSection,
+  'lightbox': generateGallerySection,
+  // E-commerce
+  'product-grid': generateProductGridSection,
+  'featured-products': generateProductGridSection,
+  // Blog
+  'blog-grid': generateBlogGridSection,
+  'post-grid': generateBlogGridSection,
+  'featured-posts': generateBlogGridSection,
+  // Portfolio
+  'project-grid': generateProjectGridSection,
+  'featured-projects': generateProjectGridSection,
 };
 
 // ─── Main Tool Function ─────────────────────────────────────────────────────
@@ -2239,6 +3420,9 @@ export function generateSection(input: GenerateSectionInput): GenerateSectionOut
   const ctx: SectionContext = {
     uiverse,
     images: sectionImages,
+    pages: input.pages || null,
+    currentPageSlug: input.currentPageSlug || null,
+    brandName: input.brandName || null,
   };
 
   // Generate the section

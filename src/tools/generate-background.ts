@@ -67,7 +67,9 @@ export function generateBackgroundTool(
   palette: ColorPalette
 ): GenerateBackgroundOutput {
   const industry = resolveIndustry(input.industry);
-  const themeMode = input.theme === 'dark' ? 'dark' : 'light';
+  const themeMode: 'light' | 'dark' = input.theme === 'dark' ? 'dark'
+    : input.theme === 'light' ? 'light'
+    : 'light'; // explicit fallback for any unexpected value
   const styleOverride = resolvePatternStyle(input.style);
 
   const pattern = genBg(industry, palette, themeMode, styleOverride);

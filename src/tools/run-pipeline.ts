@@ -367,14 +367,14 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
     const builtInCss = selected.components.map(c => c.styles).join('\n\n');
 
     return generateFullPage({
-      pages: scope.pages,
+      allPages: scope.pages,
+      pagesToGenerate: scope.pages,
       framework,
       designTokens: tokens,
       industry: scope.industry,
       includeNavigation: true,
       includeFooter: true,
       uiverseComponents: adaptedUIverse,
-      builtInComponentCss: builtInCss,
       imageData: imageData.images || null,
     });
   }, log);
@@ -429,14 +429,14 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
         fullPageOutput = timedStep(`9. generate_full_page (retry #${retryCount})`, () => {
           const builtInCss = selected.components.map(c => c.styles).join('\n\n');
           return generateFullPage({
-            pages: scope.pages,
+            allPages: scope.pages,
+            pagesToGenerate: scope.pages,
             framework,
             designTokens: tokens,
             industry: scope.industry,
             includeNavigation: true,
             includeFooter: true,
             uiverseComponents: adaptedUIverse,
-            builtInComponentCss: builtInCss,
             imageData: imageData.images || null,
           });
         }, log);

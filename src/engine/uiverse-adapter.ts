@@ -570,28 +570,43 @@ export function instantiateCard(
     }
   }
 
-  // Fallback: Use high-quality local component
+  // Fallback: Use high-quality local component — try to extract its wrapper
   const local = LOCAL_COMPONENTS.find(c => c.category === 'card' && c.style === 'animated')
     || LOCAL_COMPONENTS.find(c => c.category === 'card');
 
   if (local) {
-     // Recursively call with a "fake" map containing the local component
-     const fakeMap: UIverseComponentMap = {
-       cards: {
-         originalName: local.name,
-         category: 'cards',
-         html: local.html,
-         css: local.css,
-         keyframes: '',
-         projectClassName: 'card',
-         animationScore: 100,
-         sourceUrl: 'local'
-       },
-       combinedCss: local.css,
-       combinedKeyframes: '',
-       summary: 'Local fallback'
-     };
-     return instantiateCard(fakeMap, content, options);
+    const localMatch = local.html.match(/^<(\w+)([^>]*)>([\s\S]*)<\/\1>$/);
+    if (localMatch) {
+      const tag = localMatch[1];
+      let attrs = localMatch[2];
+      if (attrs.includes('class="')) {
+        attrs = attrs.replace(/class="([^"]*)"/, `class="$1 ${extraClasses} animate-on-scroll"`);
+      } else {
+        attrs += ` class="card ${extraClasses} animate-on-scroll"`;
+      }
+      const badgeHtml = content.badge ? `<span class="badge">${content.badge}</span>` : '';
+      const imageHtml = content.image
+        ? `<div class="card-image"><img src="${content.image}" alt="${content.title}" width="400" height="300" loading="lazy"></div>`
+        : '';
+      const iconHtml = content.icon
+        ? content.icon.startsWith('<svg')
+          ? `<div class="card-icon">${content.icon}</div>`
+          : content.icon.startsWith('http')
+            ? `<div class="card-icon"><img src="${content.icon}" alt="${content.title} icon" width="28" height="28" loading="lazy"></div>`
+            : `<div class="card-icon"><span>${content.icon}</span></div>`
+        : '';
+      const priceHtml = content.price ? `<div class="card-price">${content.price}</div>` : '';
+      return `<${tag}${attrs}${delayAttr}>
+  ${badgeHtml}
+  ${imageHtml}
+  ${iconHtml}
+  <h3 class="card-title">${content.title}</h3>
+  <p class="card-description">${content.description}</p>
+  ${priceHtml}
+  ${content.link ? `<a href="${content.link}" class="card-link">Learn more</a>` : ''}
+</${tag}>`;
+    }
+    // Local component HTML too complex to parse — fall through to primitive
   }
 
   // Last resort: primitive fallback

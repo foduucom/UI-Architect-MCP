@@ -11,6 +11,8 @@
 
 export interface ReviewInput {
   code: string;
+  css?: string; // External CSS code (if separate from HTML)
+  js?: string; // External JS code (if separate from HTML)
   industry?: string;
   checkAccessibility?: boolean;
   checkAnimations?: boolean;
@@ -367,8 +369,19 @@ function checkForComponentConsistency(code: string): ReviewIssue[] {
 // ─── Main Tool Function ─────────────────────────────────────────────────────
 
 export function reviewOutput(input: ReviewInput): ReviewOutput {
-  const code = input.code;
+  // Merge HTML + external CSS + external JS so all checks see the complete codebase
+  const code = [input.code, input.css || '', input.js || ''].filter(Boolean).join('\n');
   const issues: ReviewIssue[] = [];
+
+  // Warn if HTML references external CSS but none was provided for review
+  if (!input.css && input.code.includes('rel="stylesheet"')) {
+    issues.push({
+      severity: 'info',
+      category: 'Review',
+      message: 'HTML references external CSS files but no CSS was provided to review. Pass the CSS content via the "css" parameter for accurate animation, hover, and responsive checks.',
+      suggestion: 'Include the contents of your external CSS files in the "css" parameter.',
+    });
+  }
 
   // Always run these checks
   issues.push(...checkForAIGradients(code));
