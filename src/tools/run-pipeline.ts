@@ -24,6 +24,8 @@
  * Built by FODUU (https://foduu.com) — India's Web Design Company
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { analyzeProject, type AnalyzeProjectOutput, type ProjectScope } from './analyze-project.js';
 import { planArchitecture, type ArchitecturePlan } from './plan-architecture.js';
 import { designTheme } from './design-theme.js';
@@ -38,6 +40,8 @@ import { designConsistencyCheck } from './design-consistency-check.js';
 import { generateBuildManifest } from './generate-build-manifest.js';
 import { fetchImages } from './fetch-images.js';
 import { seoFix } from './seo-fix.js';
+import { generateContent } from './generate-content.js';
+import type { GeneratedContent } from './generate-content.js';
 import { adaptUIverseComponents, loadLocalUIverseMap, type UIverseComponentMap } from '../engine/uiverse-adapter.js';
 import type { DesignTokens } from '../engine/types.js';
 
@@ -51,10 +55,14 @@ export interface RunPipelineInput {
   pageCount?: number;
   themePreference?: 'light' | 'dark' | 'auto';
   brandColor?: string;
+  /** Brand/company name — displayed in navigation, footer, meta tags, and content */
+  brandName?: string;
   skipUIverse?: boolean;
   seoThreshold?: number;
   qaThreshold?: number;
   maxRetries?: number;
+  /** Absolute path to write all generated files to disk. If provided, files are written and a compact summary is returned instead of full code. */
+  outputDir?: string;
 }
 
 export interface PipelineStepResult {
@@ -158,6 +166,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       industry: input.industry,
       framework: input.framework,
       pageCount: input.pageCount,
+      brandName: input.brandName,
     });
   }, log);
 
@@ -353,6 +362,42 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
     });
   }
 
+  // ── Step 8b: Generate Content (industry-aware copy for all sections) ─────
+
+  const contentMap: Record<string, GeneratedContent> = {};
+  try {
+    timedStep('8b. generate_content', () => {
+      const allSectionTypes = new Set<string>();
+      for (const page of scope.pages) {
+        for (const s of page.sections) {
+          if (s !== 'navigation' && s !== 'navbar' && s !== 'footer') {
+            allSectionTypes.add(s);
+          }
+        }
+      }
+      for (const sectionType of allSectionTypes) {
+        try {
+          const result = generateContent({
+            sectionType,
+            industry: scope.industry,
+            brandName: scope.brandName,
+            tone: scope.tone || 'professional',
+          });
+          contentMap[sectionType] = result.content;
+        } catch {
+          // Non-blocking — falls back to getDefaultContent
+        }
+      }
+    }, log);
+  } catch {
+    log.push({
+      step: '8b. generate_content',
+      status: 'warning',
+      duration: 0,
+      message: 'Content generation skipped. Using default content.',
+    });
+  }
+
   // ── Step 9: Generate Full Pages (with retry loop) ────────────────────────
 
   let retryCount = 0;
@@ -374,8 +419,11 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       industry: scope.industry,
       includeNavigation: true,
       includeFooter: true,
+      brandName: scope.brandName,
       uiverseComponents: adaptedUIverse,
       imageData: imageData.images || null,
+      content: Object.keys(contentMap).length > 0 ? contentMap : null,
+      skipSharedFiles: true,
     });
   }, log);
 
@@ -436,8 +484,11 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
             industry: scope.industry,
             includeNavigation: true,
             includeFooter: true,
+            brandName: scope.brandName,
             uiverseComponents: adaptedUIverse,
             imageData: imageData.images || null,
+            content: Object.keys(contentMap).length > 0 ? contentMap : null,
+            skipSharedFiles: true,
           });
         }, log);
       }
@@ -636,6 +687,69 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
   summary += `\n---\n\n`;
   summary += `**Next:** Review the generated pages, copy the scaffold files to your project, and customize content as needed.\n`;
   summary += `Full build manifest is included below.\n`;
+
+  // ── Write files to disk if outputDir is provided ─────────────────────────
+
+  if (input.outputDir) {
+    const outDir = input.outputDir;
+    fs.mkdirSync(outDir, { recursive: true });
+
+    // Write scaffold files (reset.css, variables.css, animations.css, etc.)
+    for (const file of scaffold.files) {
+      const filePath = path.join(outDir, file.path);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, file.content, 'utf-8');
+    }
+
+    // Write page HTML files
+    for (const page of fullPageOutput.pages) {
+      const htmlPath = path.join(outDir, `${page.slug}.html`);
+      fs.writeFileSync(htmlPath, page.html, 'utf-8');
+
+      // Write page-specific CSS
+      if (page.css) {
+        const cssDir = framework === 'html' ? 'assets/css' : 'css';
+        const cssPath = path.join(outDir, cssDir, `${page.slug}.css`);
+        fs.mkdirSync(path.dirname(cssPath), { recursive: true });
+        fs.writeFileSync(cssPath, page.css, 'utf-8');
+      }
+
+      // Write page-specific JS
+      if (page.js) {
+        const jsDir = framework === 'html' ? 'assets/js' : 'js';
+        const jsPath = path.join(outDir, jsDir, `${page.slug}.js`);
+        fs.mkdirSync(path.dirname(jsPath), { recursive: true });
+        fs.writeFileSync(jsPath, page.js, 'utf-8');
+      }
+    }
+
+    // Write shared CSS/JS if present
+    if (fullPageOutput.sharedCss) {
+      const sharedCssPath = path.join(outDir, framework === 'html' ? 'assets/css/shared.css' : 'css/shared.css');
+      fs.mkdirSync(path.dirname(sharedCssPath), { recursive: true });
+      fs.writeFileSync(sharedCssPath, fullPageOutput.sharedCss, 'utf-8');
+    }
+    if (fullPageOutput.sharedJs) {
+      const sharedJsPath = path.join(outDir, framework === 'html' ? 'assets/js/shared.js' : 'js/shared.js');
+      fs.mkdirSync(path.dirname(sharedJsPath), { recursive: true });
+      fs.writeFileSync(sharedJsPath, fullPageOutput.sharedJs, 'utf-8');
+    }
+
+    // Write build manifest
+    if (buildManifest) {
+      fs.writeFileSync(path.join(outDir, 'BUILD-MANIFEST.md'), buildManifest, 'utf-8');
+    }
+
+    summary += `\n\n## Files Written to Disk\n\nOutput directory: \`${outDir}\`\n`;
+    const writtenFiles = [
+      ...scaffold.files.map(f => f.path),
+      ...fullPageOutput.pages.map(p => `${p.slug}.html`),
+      ...fullPageOutput.pages.filter(p => p.css).map(p => `${framework === 'html' ? 'assets/css' : 'css'}/${p.slug}.css`),
+    ];
+    for (const f of writtenFiles) {
+      summary += `- ${f}\n`;
+    }
+  }
 
   return {
     projectName,

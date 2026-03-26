@@ -340,7 +340,7 @@ function checkForComponentConsistency(code: string): ReviewIssue[] {
   // Count distinct button variants
   const btnPrimaryCount = (code.match(/\.btn-primary/g) || []).length;
   const btnSecondaryCount = (code.match(/\.btn-secondary/g) || []).length;
-  const btnCustomCount = (code.match(/\.btn-[a-z-]+(?!primary|secondary)/g) || []).length;
+  const btnCustomCount = (code.match(/\.btn-(?!primary\b|secondary\b)[a-z-]+/g) || []).length;
 
   if (btnCustomCount > 0) {
     issues.push({

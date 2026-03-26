@@ -29,6 +29,7 @@ import {
   instantiateInput,
 } from '../engine/uiverse-adapter.js';
 import { generateContent } from './generate-content.js';
+import { resolveBrandName } from './generate-full-page.js';
 import type { ResolvedImage } from './fetch-images.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -55,6 +56,8 @@ export interface GenerateSectionInput {
   currentPageSlug?: string | null;
   /** Brand/project name for navigation and footer */
   brandName?: string | null;
+  /** Skip per-section UIverse CSS injection — generate_full_page handles it at page level */
+  skipUIverseInjection?: boolean;
 }
 
 export interface SectionContent {
@@ -122,6 +125,9 @@ const SECTION_REQUIREMENTS: Record<string, ComponentCategory[]> = {
   'skills': ['badge'],
   'project-grid': ['card', 'badge'],
   'featured-projects': ['card'],
+  'categories': ['card'],
+  'map': ['button-primary'],
+  'info': [],
 };
 
 // ─── Default Content ────────────────────────────────────────────────────────
@@ -198,37 +204,37 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
     'features': (() => {
       const icons = getIndustryIcons(industry, 6);
       return {
-        headline: 'Everything You Need',
+        headline: `Why ${industryName} Teams Choose Us`,
         subheadline: 'Powerful features designed to help you succeed.',
         items: [
           {
-            title: 'Lightning Fast',
-            description: 'Optimized for speed and performance. Every millisecond counts when it comes to user experience.',
+            title: 'Premium Quality',
+            description: 'Every product and service meets the highest standards. Quality you can see and feel.',
             icon: icons[0],
           },
           {
-            title: 'Secure by Default',
-            description: 'Enterprise-grade security built into every layer. Your data is always protected.',
+            title: 'Trusted & Secure',
+            description: 'Your trust is our priority. We protect your information and stand behind everything we offer.',
             icon: icons[1],
           },
           {
-            title: 'Easy Integration',
-            description: 'Connect with your existing tools in minutes. We support 100+ integrations out of the box.',
+            title: 'Seamless Experience',
+            description: 'Designed to be intuitive and effortless. Get started quickly with zero friction.',
             icon: icons[2],
           },
           {
-            title: 'Analytics Built-in',
-            description: 'Track everything that matters with real-time dashboards and custom reports.',
+            title: 'Transparent Pricing',
+            description: 'No hidden fees, no surprises. What you see is exactly what you get.',
             icon: icons[3],
           },
           {
-            title: '24/7 Support',
-            description: 'Our team is always available to help you succeed. Chat, email, or phone — your choice.',
+            title: 'Dedicated Support',
+            description: 'Our team is always available to help. Reach us by chat, email, or phone anytime.',
             icon: icons[4],
           },
           {
-            title: 'Scale Infinitely',
-            description: 'From startup to enterprise, our infrastructure grows with you. No limits, no compromises.',
+            title: 'Built to Grow',
+            description: 'Whether you are just starting out or scaling up, we grow with you every step of the way.',
             icon: icons[5],
           },
         ],
@@ -554,6 +560,36 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
         { title: 'Premium Item', description: 'Our most popular product this season.', price: '$129.99', image: resolvePicsumUrl(600, 400, 334), badge: 'Featured' },
         { title: 'Classic Essential', description: 'A timeless piece for every wardrobe.', price: '$89.99', image: resolvePicsumUrl(600, 400, 335) },
         { title: 'New Arrival', description: 'Fresh from our latest collection.', price: '$69.99', image: resolvePicsumUrl(600, 400, 336), badge: 'New' },
+      ],
+    },
+    // ─── Categories Section ──────────────────────────────────────────────
+    'categories': {
+      headline: 'Browse Categories',
+      subheadline: 'Explore our curated categories.',
+      items: [
+        { title: 'Clothing', description: 'Apparel for every occasion.', image: resolvePicsumUrl(400, 300, 360), link: '#' },
+        { title: 'Accessories', description: 'Complete your look.', image: resolvePicsumUrl(400, 300, 361), link: '#' },
+        { title: 'Electronics', description: 'Latest gadgets and tech.', image: resolvePicsumUrl(400, 300, 362), link: '#' },
+        { title: 'Home & Living', description: 'Furnish your space.', image: resolvePicsumUrl(400, 300, 363), link: '#' },
+        { title: 'Sports', description: 'Gear up for adventure.', image: resolvePicsumUrl(400, 300, 364), link: '#' },
+        { title: 'Beauty', description: 'Skincare, makeup & more.', image: resolvePicsumUrl(400, 300, 365), link: '#' },
+      ],
+    },
+    // ─── Contact Map & Info Sections ─────────────────────────────────────
+    'map': {
+      headline: 'Find Us',
+      subheadline: 'Visit us at our location.',
+      description: '123 Business Avenue, Suite 100, San Francisco, CA 94102',
+      ctaText: 'Get Directions',
+    },
+    'info': {
+      headline: 'Contact Information',
+      subheadline: 'Get in touch through any channel below.',
+      items: [
+        { title: 'Email', description: 'hello@example.com', icon: 'mail' },
+        { title: 'Phone', description: '+1 (555) 123-4567', icon: 'phone' },
+        { title: 'Address', description: '123 Business Avenue, Suite 100, San Francisco, CA 94102', icon: 'map-pin' },
+        { title: 'Business Hours', description: 'Mon-Fri: 9:00 AM - 6:00 PM', icon: 'clock' },
       ],
     },
     // ─── Blog Sections ───────────────────────────────────────────────────
@@ -1570,7 +1606,7 @@ function generateFooterSection(
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand">
-        <h3 class="footer-logo">${ctx?.brandName || content.headline || 'Company'}</h3>
+        <h3 class="footer-logo">${resolveBrandName(ctx?.brandName) || content.headline}</h3>
         <p class="footer-description">${content.description || 'Building the future, one product at a time.'}</p>
       </div>
       <div class="footer-links">
@@ -1688,7 +1724,7 @@ function generateNavigationSection(
   const navCta = instantiateButton(ctx?.uiverse, 'Get Started', { variant: 'primary', href: '#', extraClasses: 'nav-cta' });
 
   // Use real page links from context when available, otherwise fall back to section anchors
-  const brandName = ctx?.brandName || content.headline || 'Brand';
+  const brandName = resolveBrandName(ctx?.brandName) || content.headline;
   let navLinksHtml: string;
 
   if (ctx?.pages && ctx.pages.length > 0) {
@@ -3254,6 +3290,357 @@ ${projectsHtml}
   return { html, css, js: '' };
 }
 
+// ─── Categories Section ──────────────────────────────────────────────────────
+
+function generateCategoriesSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const images = ctx?.images || [];
+
+  const cardsHtml = items.map((item, i) => {
+    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(400, 300, 360 + i);
+    return instantiateCard(ctx?.uiverse, {
+      title: item.title,
+      description: item.description,
+      image: imgSrc,
+      link: item.link || '#',
+      index: i,
+    }, {
+      extraClasses: 'category-card',
+      animateDelay: i * 100,
+    });
+  }).join('\n');
+
+  const html = `<!-- Categories Section -->
+<section class="categories-section section" id="categories">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Browse Categories'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="categories-grid stagger-children">
+${cardsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const colCount = Math.min(items.length, 4);
+
+  const css = `/* Categories Section */
+.categories-section { padding: var(--space-5xl) 0; }
+.categories-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-xl);
+  margin-top: var(--space-3xl);
+}
+
+@media (min-width: 768px) {
+  .categories-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .categories-grid {
+    grid-template-columns: repeat(${colCount}, 1fr);
+  }
+}
+
+.category-card {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  min-height: 200px;
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.category-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.category-card .card-image {
+  position: absolute;
+  inset: 0;
+}
+
+.category-card .card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-slow);
+}
+
+.category-card:hover .card-image img {
+  transform: scale(1.08);
+}
+
+.category-card .card-title {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: var(--fs-h4);
+  font-weight: 600;
+  padding: var(--space-lg);
+  margin-top: auto;
+  background: linear-gradient(to top, rgba(0,0,0,0.7), transparent 80%);
+  min-height: 200px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.category-card .card-description {
+  position: relative;
+  z-index: 1;
+  color: rgba(255,255,255,0.8);
+  font-size: var(--fs-small);
+  padding: 0 var(--space-lg) var(--space-lg);
+  background: rgba(0,0,0,0.5);
+}`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Map Section ─────────────────────────────────────────────────────────────
+
+function generateMapSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const address = content.description || '123 Business Avenue, Suite 100, San Francisco, CA 94102';
+  const encodedAddress = address.replace(/\s+/g, '+');
+  const directionsBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Directions', {
+    variant: 'primary',
+    href: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
+  });
+
+  const html = `<!-- Map Section -->
+<section class="map-section section" id="map">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Find Us'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="map-wrapper animate-on-scroll">
+      <div class="map-embed">
+        <div class="map-placeholder" aria-label="Map showing business location">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" width="64" height="64">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <p class="map-placeholder-text">Interactive map</p>
+        </div>
+      </div>
+      <div class="map-info-panel">
+        <div class="map-address-icon">
+          <img src="${resolveIconForKeyword('map-pin')}" alt="" width="24" height="24" class="map-icon-img" />
+        </div>
+        <p class="map-address">${address}</p>
+        <div class="map-directions-btn">
+          ${directionsBtn}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Map Section */
+.map-section { padding: var(--space-5xl) 0; }
+
+.map-wrapper {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin-top: var(--space-3xl);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-200);
+  background: var(--color-neutral-50);
+}
+
+@media (min-width: 768px) {
+  .map-wrapper {
+    grid-template-columns: 1.5fr 1fr;
+  }
+}
+
+.map-embed {
+  min-height: 300px;
+  background: var(--color-neutral-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-placeholder {
+  text-align: center;
+  color: var(--color-neutral-500);
+  padding: var(--space-xl);
+}
+
+.map-placeholder svg {
+  margin: 0 auto var(--space-md);
+  opacity: 0.5;
+}
+
+.map-placeholder-text {
+  font-size: var(--fs-small);
+  color: var(--color-neutral-400);
+}
+
+.map-info-panel {
+  padding: var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-md);
+}
+
+.map-address-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+.map-icon-img {
+  filter: brightness(0) invert(1);
+}
+
+.map-address {
+  font-size: var(--fs-h4);
+  color: var(--color-neutral-700);
+  line-height: 1.6;
+}
+
+.map-directions-btn {
+  margin-top: var(--space-sm);
+}`;
+
+  return { html, css, js: '' };
+}
+
+// ─── Contact Info Section ────────────────────────────────────────────────────
+
+function generateInfoSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+
+  const cardsHtml = items.map((item, i) => {
+    const iconUrl = resolveIconForKeyword(item.icon || item.title.toLowerCase());
+    return `
+      <div class="info-card animate-on-scroll" style="transition-delay: ${i * 100}ms">
+        <div class="info-card-icon">
+          <img src="${iconUrl}" alt="" width="24" height="24" class="info-icon-img" />
+        </div>
+        <h3 class="info-card-title">${item.title}</h3>
+        <p class="info-card-detail">${item.description}</p>
+      </div>`;
+  }).join('\n');
+
+  const colCount = Math.min(items.length, 4);
+
+  const html = `<!-- Contact Info Section -->
+<section class="info-section section" id="info">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || 'Contact Information'}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+    </div>
+    <div class="info-grid stagger-children">
+${cardsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Contact Info Section */
+.info-section { padding: var(--space-5xl) 0; }
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-xl);
+  margin-top: var(--space-3xl);
+}
+
+@media (min-width: 640px) {
+  .info-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .info-grid {
+    grid-template-columns: repeat(${colCount}, 1fr);
+  }
+}
+
+.info-card {
+  text-align: center;
+  padding: var(--space-2xl);
+  border-radius: var(--radius-lg);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.info-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-primary);
+}
+
+.info-card-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  margin: 0 auto var(--space-lg);
+  transition: transform var(--transition-base);
+}
+
+.info-card:hover .info-card-icon {
+  transform: scale(1.1);
+}
+
+.info-icon-img {
+  width: 24px;
+  height: 24px;
+  filter: brightness(0) invert(1);
+}
+
+.info-card-title {
+  font-family: var(--font-heading);
+  font-size: var(--fs-h4);
+  font-weight: 600;
+  color: var(--color-neutral-900);
+  margin-bottom: var(--space-sm);
+}
+
+.info-card-detail {
+  font-size: var(--fs-body);
+  color: var(--color-neutral-600);
+  line-height: 1.6;
+}`;
+
+  return { html, css, js: '' };
+}
+
 // ─── Generic fallback ───────────────────────────────────────────────────────
 
 // Meaningful fallback descriptions for section types without dedicated generators
@@ -3391,6 +3778,11 @@ const SECTION_GENERATORS: Record<string, SectionGenerator> = {
   // E-commerce
   'product-grid': generateProductGridSection,
   'featured-products': generateProductGridSection,
+  // Categories
+  'categories': generateCategoriesSection,
+  // Contact page
+  'map': generateMapSection,
+  'info': generateInfoSection,
   // Blog
   'blog-grid': generateBlogGridSection,
   'post-grid': generateBlogGridSection,
@@ -3436,7 +3828,7 @@ export function generateSection(input: GenerateSectionInput): GenerateSectionOut
   let uiverseCss = '';
   const uiverseSources: string[] = [];
 
-  if (uiverse) {
+  if (uiverse && !input.skipUIverseInjection) {
     // Map section component requirements to UIverse categories
     const categoryMapping: Record<string, string> = {
       'button-primary': 'buttons',

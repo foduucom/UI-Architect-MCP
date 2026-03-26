@@ -84,6 +84,15 @@ body {
  * blended with low opacity for subtlety.
  * Opacity: 0.05-0.12 per gradient layer.
  */
+/** Convert hex color to rgba() string — prevents invalid rgba(#hex, opacity) */
+function hexToRgba(hex: string, opacity: number): string {
+  const cleaned = hex.replace('#', '');
+  const r = parseInt(cleaned.substring(0, 2), 16);
+  const g = parseInt(cleaned.substring(2, 4), 16);
+  const b = parseInt(cleaned.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
 function generateGradientPattern(palette: ColorPalette, themeMode: 'light' | 'dark'): BackgroundPattern {
   const backgroundColor = themeMode === 'light' ? palette.neutral50 : palette.neutral900;
 
@@ -93,11 +102,11 @@ function generateGradientPattern(palette: ColorPalette, themeMode: 'light' | 'da
     : `rgba(${palette.primaryRgb}, 0.05)`;
 
   const gradient2 = themeMode === 'light'
-    ? `rgba(${palette.secondaryLight}, 0.06)`
-    : `rgba(${palette.accentLight}, 0.04)`;
+    ? hexToRgba(palette.secondaryLight, 0.06)
+    : hexToRgba(palette.accentLight, 0.04);
 
   const gradient3 = themeMode === 'light'
-    ? `rgba(${palette.accentLight}, 0.05)`
+    ? hexToRgba(palette.accentLight, 0.05)
     : `rgba(${palette.primaryRgb}, 0.03)`;
 
   const css = `/* Soft mesh gradient pattern */

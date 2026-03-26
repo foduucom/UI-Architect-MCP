@@ -719,49 +719,42 @@ function generateClarifyingQuestions(
   detectedPageType: string,
   pages: PageDefinition[]
 ): string[] {
-  const questions: string[] = [];
+  const decisions: string[] = [];
   const lower = description.toLowerCase();
 
-  // Always ask about content/brand
   if (!lower.includes('color') && !lower.includes('brand') && !lower.includes('#')) {
-    questions.push(
-      'Do you have specific brand colors (hex codes) you want to use, or should I generate a palette based on your industry?'
+    decisions.push(
+      `No brand colors specified — a palette will be auto-generated based on the detected industry. Override: pass "brandColor" parameter to design_theme.`
     );
   }
 
-  // Framework ambiguity
   if (!detectedFramework) {
-    questions.push(
-      'Which framework do you prefer? Options: vanilla HTML/CSS/JS (works in browser directly), React, Next.js, Vue, Nuxt, Angular, Svelte, or Astro.'
+    decisions.push(
+      `No framework specified — defaulting to vanilla HTML/CSS/JS. Override: pass "framework" parameter.`
     );
   }
 
-  // Pages ambiguity
   if (pages.length > 1 && !lower.includes('page') && !lower.includes('multi')) {
-    questions.push(
-      `I've planned ${pages.length} pages (${pages
-        .map((p) => p.name)
-        .join(', ')}). Do you want all of these, or just specific ones?`
+    decisions.push(
+      `Auto-planned ${pages.length} pages (${pages.map((p) => p.name).join(', ')}). Override: pass "pageNames" or "pageCount" to customize.`
     );
   }
 
-  // Content ambiguity
   if (!lower.includes('content') && !lower.includes('copy') && !lower.includes('text')) {
-    questions.push(
-      'Should I generate placeholder content (realistic dummy text), or will you provide the actual copy?'
+    decisions.push(
+      `No content provided — realistic placeholder text will be generated. Override: call generate_content before generate_full_page.`
     );
   }
 
-  // Specific feature ambiguity
   if (lower.includes('dashboard') && !lower.includes('chart') && !lower.includes('data')) {
-    questions.push('What kind of data should the dashboard display? (e.g., sales metrics, user analytics, inventory, etc.)');
+    decisions.push('Dashboard detected without data context — defaulting to generic analytics metrics. Specify data types in the description to customize.');
   }
 
   if (detectedPageType === 'ecommerce' && !lower.includes('product')) {
-    questions.push('What products/services will the store sell? This affects the layout and category structure.');
+    decisions.push('E-commerce site detected without product details — using generic product categories. Specify products in the description to customize.');
   }
 
-  return questions;
+  return decisions;
 }
 
 // ─── Main Tool Function ─────────────────────────────────────────────────────
@@ -889,7 +882,7 @@ export function analyzeProject(input: AnalyzeProjectInput): AnalyzeProjectOutput
     risks.length > 0 ? risks.map((r) => `- ⚠️ ${r}`).join('\n') : '- ✅ No significant risks identified.';
   const questionsSection =
     clarifyingQuestions.length > 0
-      ? `### Clarifying Questions\n${clarifyingQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\n**Please answer these questions before proceeding to the next phase.** The AI assistant should ask these questions to the user.`
+      ? `### Design Decisions\n${clarifyingQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`
       : '### Ready to Proceed\nAll requirements are clear. Proceed to `plan_architecture` next.';
 
   const summary = `## Project Analysis Complete

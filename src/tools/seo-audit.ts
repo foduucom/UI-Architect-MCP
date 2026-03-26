@@ -869,11 +869,18 @@ function checkMobileOptimization(code: string): SeoIssue[] {
 
   // Check for responsive media queries
   if (!code.includes('@media') && code.includes('width=device-width')) {
+    // Detect external stylesheet links that might contain media queries we can't see
+    const hasExternalStylesheets = /<link[^>]+rel=["']stylesheet["'][^>]*>/i.test(code);
+
     issues.push({
-      severity: 'major',
+      severity: hasExternalStylesheets ? 'suggestion' : 'major',
       category: 'mobile',
-      issue: 'No CSS media queries found for responsive design',
-      impact: 'Without media queries, layout breaks on different screen sizes, hurting mobile SEO.',
+      issue: hasExternalStylesheets
+        ? 'No CSS media queries found in inline/provided code (external stylesheets detected)'
+        : 'No CSS media queries found for responsive design',
+      impact: hasExternalStylesheets
+        ? 'External stylesheets may contain responsive media queries. Verify linked CSS files include mobile breakpoints.'
+        : 'Without media queries, layout breaks on different screen sizes, hurting mobile SEO.',
       fix: 'Add @media queries for mobile (375px), tablet (768px), and desktop (1024px).',
       codeSnippet: '@media (min-width: 768px) { /* tablet styles */ }',
     });

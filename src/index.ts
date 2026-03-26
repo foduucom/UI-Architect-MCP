@@ -50,6 +50,10 @@ import { seoFix } from './tools/seo-fix.js';
 import type { DesignTokens, Framework } from './engine/types.js';
 import type { ProjectScope, AnalyzeProjectOutput } from './tools/analyze-project.js';
 import type { ArchitecturePlan } from './tools/plan-architecture.js';
+import { adaptUIverseComponents } from './engine/uiverse-adapter.js';
+import type { UIverseComponentMap } from './engine/uiverse-adapter.js';
+import type { ResolvedImage } from './tools/fetch-images.js';
+import type { GeneratedContent } from './tools/generate-content.js';
 
 // ─── Disk Write Utility ─────────────────────────────────────────────────────
 
@@ -114,6 +118,9 @@ let currentScope: ProjectScope | null = null;
 let currentPlan: ArchitecturePlan | null = null;
 let currentTokens: DesignTokens | null = null;
 let lastAnalysis: AnalyzeProjectOutput | null = null;
+let currentComponents: UIverseComponentMap | null = null;
+let currentImages: Record<string, ResolvedImage[]> | null = null;
+let currentContent: Record<string, GeneratedContent> | null = null;
 
 // ─── Tool 1: analyze_project (Phase 1 — PM Analysis) ────────────────────────
 
@@ -170,11 +177,10 @@ IMPORTANT: Always call this FIRST before any other tool. It sets up the entire p
       let output = result.summary;
 
       if (result.needsClarification && result.clarifyingQuestions.length > 0) {
-        output += '\n\n---\n\n### ⚠️ Clarifying Questions\nBefore proceeding, consider these questions:\n';
+        output += '\n\n---\n\n### Design Decisions\nThe following were auto-decided based on your description:\n';
         result.clarifyingQuestions.forEach((q, i) => {
           output += `\n${i + 1}. ${q}`;
         });
-        output += '\n\nYou can proceed to `plan_architecture` or ask the user these questions first.';
       }
 
       if (result.riskAssessment.length > 0) {
@@ -380,8 +386,13 @@ Presets: "all" (13 components), "landing" (button + card + nav + badge), "form" 
         };
       }
 
+      // Auto-populate component types from architecture plan if available
+      const resolvedComponentTypes = componentTypes.length > 0
+        ? componentTypes
+        : (currentPlan?.allComponentsNeeded || ['landing']);
+
       const result = selectComponents({
-        componentTypes,
+        componentTypes: resolvedComponentTypes,
         designTokens: currentTokens,
         framework: framework as Framework,
         animationPreference: (animationPreference as 'low' | 'medium' | 'high') || 'high',
@@ -684,6 +695,9 @@ IMPORTANT: Run design_theme first. Optionally run scaffold_project to get the pr
         includeNavigation: includeNavigation !== false,
         includeFooter: includeFooter !== false,
         brandName: currentScope?.brandName,
+        uiverseComponents: currentComponents,
+        imageData: currentImages,
+        content: currentContent,
       });
 
       // If outputDir provided, write files to disk and return summary
@@ -951,6 +965,15 @@ Categories: buttons, cards, loaders, inputs, checkboxes, toggles, radio-buttons,
         industry: industry || currentScope?.industry,
         tone: tone || currentScope?.tone,
       });
+
+      // Store adapted UIverse components in session state for generate_full_page auto-consumption
+      if (result.components && result.components.length > 0) {
+        try {
+          currentComponents = adaptUIverseComponents(result.components);
+        } catch {
+          // Non-blocking — built-in components still work
+        }
+      }
 
       let output = result.summary;
 
@@ -1241,6 +1264,9 @@ Call this AFTER scaffold_project, BEFORE or alongside generate_full_page.`,
         preferIcons,
       });
 
+      // Store in session state for generate_full_page auto-consumption
+      currentImages = result.images;
+
       let output = result.summary;
 
       output += '\n\n---\n\n';
@@ -1436,6 +1462,10 @@ server.tool(
         context: params.context,
       });
 
+      // Accumulate in session state for generate_full_page auto-consumption
+      if (!currentContent) currentContent = {};
+      currentContent[params.sectionType] = result.content;
+
       let output = `## Generated Content (${result.source})\n\n`;
       output += '```json\n' + JSON.stringify(result.content, null, 2) + '\n```';
 
@@ -1526,10 +1556,12 @@ server.tool(
     pageCount: z.number().optional().describe('Number of pages to generate. Defaults to 1.'),
     themePreference: z.enum(['light', 'dark', 'auto']).optional().describe('Theme preference. Defaults to auto (industry-based).'),
     brandColor: z.string().optional().describe('Optional brand hex color to anchor the palette — e.g. "#2563EB"'),
+    brandName: z.string().optional().describe('Brand/company name — displayed in navigation, footer, meta tags, and content. e.g. "ShopAnytime"'),
     skipUIverse: z.boolean().optional().describe('Skip UIverse component exploration. Defaults to false.'),
     seoThreshold: z.number().optional().describe('Minimum SEO score (0-100) to pass. Defaults to 70.'),
     qaThreshold: z.number().optional().describe('Minimum QA score (0-100) to pass. Defaults to 60.'),
     maxRetries: z.number().optional().describe('Max retry attempts if SEO/QA fails. Defaults to 2.'),
+    outputDir: z.string().optional().describe('Absolute path to write all generated files to disk. If provided, files are written and a compact summary is returned. Example: "/home/user/projects/my-site"'),
   },
   async (params) => {
     try {
@@ -1541,10 +1573,12 @@ server.tool(
         pageCount: params.pageCount,
         themePreference: params.themePreference as 'light' | 'dark' | 'auto' | undefined,
         brandColor: params.brandColor,
+        brandName: params.brandName,
         skipUIverse: params.skipUIverse,
         seoThreshold: params.seoThreshold,
         qaThreshold: params.qaThreshold,
         maxRetries: params.maxRetries,
+        outputDir: params.outputDir,
       });
 
       let output = `# Pipeline Complete\n\n`;
@@ -1559,13 +1593,50 @@ server.tool(
         output += `- **${log.step}**: ${log.duration}ms ${log.status === 'error' ? '❌' : '✅'}\n`;
       }
 
-      output += `\n## Pages\n\n`;
-      for (const page of result.pages) {
-        output += `### ${page.name} (${page.slug})\n\n`;
-        output += `**HTML** (${page.html.length} chars)\n\`\`\`html\n${page.html}\n\`\`\`\n\n`;
-        output += `**CSS** (${page.css.length} chars)\n\`\`\`css\n${page.css}\n\`\`\`\n\n`;
-        if (page.js) {
-          output += `**JS** (${page.js.length} chars)\n\`\`\`javascript\n${page.js}\n\`\`\`\n\n`;
+      // If outputDir was used, files are already on disk — return compact summary
+      if (params.outputDir) {
+        output += `\n## Files Written to Disk\n\n`;
+        output += `**Output directory:** \`${params.outputDir}\`\n\n`;
+        output += `### Pages\n`;
+        for (const page of result.pages) {
+          output += `- \`${page.slug}.html\` (${page.html.length} chars) + \`${page.slug}.css\` (${page.css.length} chars)\n`;
+        }
+        output += `\n### Scaffold Files\n`;
+        if (result.scaffoldFiles) {
+          for (const file of result.scaffoldFiles) {
+            output += `- \`${file.path}\` (${file.content.length} chars)\n`;
+          }
+        }
+        output += `\nAll files are ready. Open \`${params.outputDir}/index.html\` in a browser to preview.\n`;
+      } else {
+        // No outputDir — return full code in output
+        output += `\n## Pages\n\n`;
+        for (const page of result.pages) {
+          output += `### ${page.name} (${page.slug})\n\n`;
+          output += `**HTML** (${page.html.length} chars)\n\`\`\`html\n${page.html}\n\`\`\`\n\n`;
+          output += `**CSS** (${page.css.length} chars)\n\`\`\`css\n${page.css}\n\`\`\`\n\n`;
+          if (page.js) {
+            output += `**JS** (${page.js.length} chars)\n\`\`\`javascript\n${page.js}\n\`\`\`\n\n`;
+          }
+        }
+
+        // Scaffold / foundation files (CSS reset, variables, animations, components, JS)
+        if (result.scaffoldFiles && result.scaffoldFiles.length > 0) {
+          output += `\n## Scaffold Files\n\n`;
+          for (const file of result.scaffoldFiles) {
+            const ext = file.path.split('.').pop() || 'txt';
+            const lang = ext === 'js' ? 'javascript' : ext;
+            output += `### ${file.path}\n`;
+            output += `\`\`\`${lang}\n${file.content}\n\`\`\`\n\n`;
+          }
+        }
+
+        // Shared/deduplicated CSS and JS across pages
+        if (result.sharedCss) {
+          output += `### Shared CSS\n\`\`\`css\n${result.sharedCss}\n\`\`\`\n\n`;
+        }
+        if (result.sharedJs) {
+          output += `### Shared JS\n\`\`\`javascript\n${result.sharedJs}\n\`\`\`\n\n`;
         }
       }
 

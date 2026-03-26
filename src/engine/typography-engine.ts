@@ -16,9 +16,9 @@ interface FontPairingEntry extends FontPairing {
 
 const FONT_PAIRINGS: FontPairingEntry[] = [
   {
-    heading: 'Inter',
-    body: 'Inter',
-    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+    heading: 'General Sans',
+    body: 'Satoshi',
+    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=General+Sans:wght@400;500;600;700&family=Satoshi:wght@400;500;600;700&display=swap',
     bestFor: ['technology', 'corporate', 'ecommerce', 'startup'],
     toneMatch: ['modern', 'minimal', 'corporate', 'technical'],
   },
@@ -31,8 +31,8 @@ const FONT_PAIRINGS: FontPairingEntry[] = [
   },
   {
     heading: 'Plus Jakarta Sans',
-    body: 'Inter',
-    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap',
+    body: 'Plus Jakarta Sans',
+    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap',
     bestFor: ['technology', 'startup', 'ecommerce'],
     toneMatch: ['modern', 'bold', 'technical'],
   },
@@ -52,8 +52,8 @@ const FONT_PAIRINGS: FontPairingEntry[] = [
   },
   {
     heading: 'Sora',
-    body: 'Inter',
-    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap',
+    body: 'DM Sans',
+    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap',
     bestFor: ['startup', 'technology', 'finance'],
     toneMatch: ['modern', 'corporate', 'minimal'],
   },
@@ -73,8 +73,8 @@ const FONT_PAIRINGS: FontPairingEntry[] = [
   },
   {
     heading: 'Syne',
-    body: 'Inter',
-    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap',
+    body: 'Work Sans',
+    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap',
     bestFor: ['creative', 'gaming', 'luxury', 'startup'],
     toneMatch: ['bold', 'modern', 'playful'],
   },
@@ -87,8 +87,8 @@ const FONT_PAIRINGS: FontPairingEntry[] = [
   },
   {
     heading: 'Bricolage Grotesque',
-    body: 'Inter',
-    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap',
+    body: 'Source Sans 3',
+    googleFontsUrl: 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap',
     bestFor: ['creative', 'food', 'environmental'],
     toneMatch: ['warm', 'playful', 'bold'],
   },

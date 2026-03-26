@@ -42,7 +42,8 @@ export interface ConsistencyIssue {
     | 'components'
     | 'layout'
     | 'animations'
-    | 'navigation';
+    | 'navigation'
+    | 'stylesheets';
   message: string;
   affectedPages: string[];  // Page slugs that have this issue
   fix: string;
@@ -691,6 +692,94 @@ function checkNavigationConsistency(pages: PageInput[]): ConsistencyIssue[] {
   return issues;
 }
 
+// ─── Stylesheet & Font Consistency ──────────────────────────────────────────
+
+function checkStylesheetConsistency(pages: PageInput[]): ConsistencyIssue[] {
+  const issues: ConsistencyIssue[] = [];
+  if (pages.length < 2) return issues;
+
+  const stylesheetsByPage = new Map<string, string[]>();
+  const fontsByPage = new Map<string, string[]>();
+
+  for (const page of pages) {
+    const sheets: string[] = [];
+    const fonts: string[] = [];
+    const linkRegex = /<link[^>]+href=["']([^"']+)["'][^>]*>/gi;
+    let match;
+    while ((match = linkRegex.exec(page.html)) !== null) {
+      const href = match[1];
+      if (href.includes('googleapis') || href.includes('gstatic')) {
+        fonts.push(href);
+      } else if (match[0].includes('stylesheet')) {
+        sheets.push(href);
+      }
+    }
+    stylesheetsByPage.set(page.slug, sheets.sort());
+    fontsByPage.set(page.slug, fonts.sort());
+  }
+
+  const refSheets = stylesheetsByPage.get(pages[0].slug) || [];
+  const diffSheetPages = pages.slice(1).filter(p =>
+    JSON.stringify(stylesheetsByPage.get(p.slug)) !== JSON.stringify(refSheets)
+  ).map(p => p.slug);
+
+  if (diffSheetPages.length > 0) {
+    issues.push({
+      severity: 'error',
+      category: 'stylesheets',
+      message: 'Stylesheet <link> tags differ across pages — some pages may be missing shared CSS',
+      affectedPages: diffSheetPages,
+      fix: `Ensure all pages link the same CSS files. Reference page "${pages[0].slug}" has: ${refSheets.join(', ') || 'none'}.`,
+    });
+  }
+
+  const refFonts = fontsByPage.get(pages[0].slug) || [];
+  const diffFontPages = pages.slice(1).filter(p =>
+    JSON.stringify(fontsByPage.get(p.slug)) !== JSON.stringify(refFonts)
+  ).map(p => p.slug);
+
+  if (diffFontPages.length > 0) {
+    issues.push({
+      severity: 'error',
+      category: 'typography',
+      message: 'Google Fonts links differ across pages — some pages may render with fallback fonts',
+      affectedPages: diffFontPages,
+      fix: `All pages must include identical Google Fonts links. Reference: ${refFonts[0] || 'none found'}.`,
+    });
+  }
+
+  return issues;
+}
+
+// ─── Heading Hierarchy ──────────────────────────────────────────────────────
+
+function checkHeadingHierarchy(pages: PageInput[]): ConsistencyIssue[] {
+  const issues: ConsistencyIssue[] = [];
+
+  for (const page of pages) {
+    const h1Count = (page.html.match(/<h1[\s>]/gi) || []).length;
+    if (h1Count === 0) {
+      issues.push({
+        severity: 'warning',
+        category: 'typography',
+        message: `Page "${page.name}" is missing an <h1> tag`,
+        affectedPages: [page.slug],
+        fix: 'Every page should have exactly one <h1> for SEO and accessibility.',
+      });
+    } else if (h1Count > 1) {
+      issues.push({
+        severity: 'warning',
+        category: 'typography',
+        message: `Page "${page.name}" has ${h1Count} <h1> tags (should be exactly 1)`,
+        affectedPages: [page.slug],
+        fix: 'Use exactly one <h1> per page. Use <h2>-<h6> for section headings.',
+      });
+    }
+  }
+
+  return issues;
+}
+
 // ─── Main Tool Function ──────────────────────────────────────────────────────
 
 export function designConsistencyCheck(input: DesignConsistencyInput): DesignConsistencyOutput {
@@ -724,6 +813,8 @@ export function designConsistencyCheck(input: DesignConsistencyInput): DesignCon
   allIssues.push(...checkLayoutConsistency(pages, allPagesCss));
   allIssues.push(...checkAnimationConsistency(pages, allPagesCss));
   allIssues.push(...checkNavigationConsistency(pages));
+  allIssues.push(...checkStylesheetConsistency(pages));
+  allIssues.push(...checkHeadingHierarchy(pages));
 
   // Deduplicate issues (same message across multiple checks)
   const issueMap = new Map<string, ConsistencyIssue>();
@@ -749,7 +840,7 @@ export function designConsistencyCheck(input: DesignConsistencyInput): DesignCon
 
     const score = Math.max(
       0,
-      100 - errorCount * 15 - warningCount * 5 - infoCount * 2
+      100 - errorCount * 20 - warningCount * 8 - infoCount * 2
     );
 
     return {

@@ -9,8 +9,21 @@
  */
 
 import type { DesignTokens, Framework } from '../engine/types.js';
-import { generateSection, type GenerateSectionOutput, type PageInfo } from './generate-section.js';
+import { generateSection, type GenerateSectionOutput, type PageInfo, type SectionContent } from './generate-section.js';
 import type { UIverseComponentMap } from '../engine/uiverse-adapter.js';
+import type { GeneratedContent } from './generate-content.js';
+
+// ─── Utilities ──────────────────────────────────────────────────────────────
+
+/** Resolve brand name with consistent fallback across nav, footer, and meta */
+export function resolveBrandName(brandName?: string | null, industry?: string): string {
+  if (brandName) return brandName;
+  if (industry) {
+    const label = industry.charAt(0).toUpperCase() + industry.slice(1);
+    return `${label} Co`;
+  }
+  return 'Brand';
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +50,10 @@ export interface GenerateFullPageInput {
   uiverseComponents?: UIverseComponentMap | null;
   /** Resolved images per section type from fetchImages — passed through to section generators */
   imageData?: Record<string, import('./fetch-images.js').ResolvedImage[]> | null;
+  /** Per-section content from generate_content — keyed by sectionType. LLM provides this. */
+  content?: Record<string, GeneratedContent> | null;
+  /** Skip generating shared files (reset.css, variables.css, etc.) — scaffold already created them */
+  skipSharedFiles?: boolean;
 }
 
 export interface GeneratedPage {
@@ -144,7 +161,7 @@ function generateNavigation(
   brandName?: string,
   currentSlug?: string
 ): string {
-  const brand = brandName || 'Brand';
+  const brand = resolveBrandName(brandName);
 
   if (framework === 'html') {
     const navLinks = pages
@@ -248,7 +265,7 @@ ${pages
 // ─── Generate Footer Component ──────────────────────────────────────────────
 
 function generateFooter(framework: Framework, brandName?: string): string {
-  const brand = brandName || 'Your Company';
+  const brand = resolveBrandName(brandName);
   const footerContent = `
     <div class="footer-content">
       <p>&copy; ${new Date().getFullYear()} ${brand}. All rights reserved.</p>
@@ -332,18 +349,23 @@ function generateVanillaHtmlPage(
   designTokens: DesignTokens,
   navigation: string,
   footer: string,
-  brandName?: string
+  brandName?: string,
+  industry?: string
 ): string {
   const googleFontsUrl = designTokens.typography.fonts.googleFontsUrl;
   const allHtml = sections.map((s) => s.html).join('\n\n');
   const allJs = sections.map((s) => s.js).filter(Boolean).join('\n\n');
-  const brand = brandName || 'Our Company';
+  const brand = resolveBrandName(brandName, industry);
+  const industryLabel = industry
+    ? industry.charAt(0).toUpperCase() + industry.slice(1)
+    : '';
+
   const pageTitle = pageSlug === 'index'
-    ? `${brand} — Professional Technology Solutions`
+    ? `${brand}${industryLabel ? ` — ${industryLabel}` : ''}`
     : `${pageName} | ${brand}`;
   const pageDescription = pageSlug === 'index'
-    ? `${brand} provides professional technology solutions including website building, software development, and AI integration. Transform your business with our expert team.`
-    : `${pageName} — Learn more about ${brand}. We deliver professional technology solutions tailored to your business needs.`;
+    ? `Discover ${brand}${industryLabel ? ` — your trusted ${industryLabel} destination` : ''}. Premium quality, exceptional service, and a commitment to excellence.`
+    : `${pageName} — Explore what ${brand} has to offer.${industryLabel ? ` Trusted ${industryLabel} professionals.` : ''}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -542,6 +564,28 @@ function generateAngularPage(
 `;
 }
 
+// ─── Content Mapping ────────────────────────────────────────────────────────
+
+/** Maps GeneratedContent (from generate_content) to SectionContent (for generateSection) */
+function mapToSectionContent(gc: GeneratedContent): SectionContent {
+  return {
+    headline: gc.headline,
+    subheadline: gc.subheadline,
+    description: gc.bodyText,
+    ctaText: gc.ctaText,
+    ctaSecondaryText: gc.ctaSecondary,
+    items: gc.items?.map(item => ({
+      title: item.title,
+      description: item.description,
+      icon: item.icon,
+      price: item.price,
+      badge: item.badge || item.role,
+      image: item.image,
+      link: item.link,
+    })),
+  };
+}
+
 // ─── Main Function ──────────────────────────────────────────────────────────
 
 export function generateFullPage(
@@ -560,12 +604,15 @@ export function generateFullPage(
     isHomepage: p.isHomepage,
   }));
 
+  // Resolve brand name once for consistency across nav, footer, and meta
+  const resolvedBrand = resolveBrandName(input.brandName, input.industry);
+
   // Generate nav template ONCE (no active class) and footer ONCE — locked across all pages
   const navTemplate = input.includeNavigation !== false
-    ? generateNavigation(input.allPages, framework, input.designTokens, input.brandName, undefined)
+    ? generateNavigation(input.allPages, framework, input.designTokens, resolvedBrand, undefined)
     : '';
   const footerHtml = input.includeFooter !== false
-    ? generateFooter(framework, input.brandName)
+    ? generateFooter(framework, resolvedBrand)
     : '';
 
   // Generate each page
@@ -588,7 +635,9 @@ export function generateFullPage(
           sectionType,
           framework: input.framework,
           designTokens: input.designTokens,
-          content: undefined, // Content would come from page data
+          content: input.content?.[sectionType]
+            ? mapToSectionContent(input.content[sectionType])
+            : undefined,
           sectionIndex: i,
           uiverseComponents: input.uiverseComponents || null,
           imageData: input.imageData || null,
@@ -596,6 +645,7 @@ export function generateFullPage(
           pages: pageInfoList,
           currentPageSlug: pageDef.slug,
           brandName: input.brandName || null,
+          skipUIverseInjection: true,
         });
 
         sectionOutputs.push(sectionOutput);
@@ -625,7 +675,8 @@ export function generateFullPage(
         input.designTokens,
         navHtml,
         footerHtml,
-        input.brandName
+        resolvedBrand,
+        input.industry
       );
     } else if (framework === 'react' || framework === 'nextjs') {
       pageHtml = generateReactPage(
@@ -700,11 +751,17 @@ Total unique components: ${new Set(pages.flatMap((p) => p.componentsUsed)).size}
 All sections rendered and ready for ${framework} framework.
 Navigation between pages: ${input.includeNavigation !== false ? 'enabled' : 'disabled'}
 Footer: ${input.includeFooter !== false ? 'enabled' : 'disabled'}
+${input.uiverseComponents ? (() => {
+    const cats = ['buttons', 'cards', 'inputs', 'checkboxes', 'toggles', 'loaders', 'radios', 'tooltips', 'badges', 'navigation'] as const;
+    const active = cats.filter(c => (input.uiverseComponents as any)?.[c]);
+    return active.length > 0 ? `\nUIverse Components Active: ${active.join(', ')}` : '';
+  })() : ''}
 `;
 
   // ─── Generate shared files ────────────────────────────────────────────────
   const sharedFiles: SharedFile[] = [];
 
+  if (!input.skipSharedFiles) {
   // 1. reset.css
   sharedFiles.push({
     filename: 'reset.css',
@@ -1136,12 +1193,12 @@ ${allSharedCss}`,
 
 /* ─── Footer ─────────────────────────────────────────────── */
 .site-footer {
-  background: var(--color-neutral-900);
-  color: var(--color-neutral-300);
+  background: ${isDark ? 'var(--color-neutral-100)' : 'var(--color-neutral-900)'};
+  color: ${isDark ? 'var(--color-neutral-500)' : 'var(--color-neutral-300)'};
   padding: var(--space-3xl) 0 var(--space-xl);
 }
 .site-footer a {
-  color: var(--color-neutral-300);
+  color: ${isDark ? 'var(--color-neutral-500)' : 'var(--color-neutral-300)'};
   transition: color var(--transition-fast);
 }
 .site-footer a:hover { color: var(--color-primary-light); }
@@ -1203,6 +1260,7 @@ ${componentKeyframesForShared}`,
   });
 })();`,
   });
+  } // end skipSharedFiles guard
 
   return {
     pages,

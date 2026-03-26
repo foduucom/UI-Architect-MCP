@@ -273,6 +273,204 @@ function addLazyLoading(html: string): { html: string; fixed: boolean; count: nu
   return { html: fixedHtml, fixed: count > 0, count };
 }
 
+function fixMissingTwitterCards(
+  html: string,
+  pageName: string,
+  industry: string
+): { html: string; fixed: boolean } {
+  if (html.includes('twitter:card') || html.includes('twitter:title')) return { html, fixed: false };
+
+  const desc = `${pageName} — Professional ${industry} solutions`;
+  const twitterTags = `  <meta name="twitter:card" content="summary_large_image">\n  <meta name="twitter:title" content="${pageName}">\n  <meta name="twitter:description" content="${desc}">`;
+
+  if (html.includes('</head>')) {
+    return { html: html.replace('</head>', `${twitterTags}\n</head>`), fixed: true };
+  }
+  return { html, fixed: false };
+}
+
+function fixMissingJsonLd(
+  html: string,
+  pageName: string,
+  industry: string
+): { html: string; fixed: boolean } {
+  if (html.includes('application/ld+json')) return { html, fixed: false };
+
+  const name = pageName.replace(/"/g, '\\"');
+  const desc = `Professional ${industry} solutions and services`.replace(/"/g, '\\"');
+  const jsonLd = `  <script type="application/ld+json">\n{"@context":"https://schema.org","@type":"Organization","name":"${name}","description":"${desc}"}\n  </script>`;
+
+  if (html.includes('</head>')) {
+    return { html: html.replace('</head>', `${jsonLd}\n</head>`), fixed: true };
+  }
+  return { html, fixed: false };
+}
+
+function fixMissingFormLabels(html: string): { html: string; fixed: boolean; count: number } {
+  const inputRegex = /<input(?![^>]*(?:aria-label|aria-labelledby))[^>]*>/gi;
+  const matches = html.match(inputRegex);
+  if (!matches || matches.length === 0) return { html, fixed: false, count: 0 };
+
+  let fixedHtml = html;
+  let count = 0;
+
+  for (const match of matches) {
+    if (/type=["'](?:hidden|submit|button)["']/i.test(match)) continue;
+    const idMatch = match.match(/id=["']([^"']+)["']/);
+    if (idMatch && html.includes(`for="${idMatch[1]}"`)) continue;
+
+    const placeholderMatch = match.match(/placeholder=["']([^"']+)["']/);
+    const nameMatch = match.match(/name=["']([^"']+)["']/);
+    const label = placeholderMatch?.[1] || nameMatch?.[1]?.replace(/[-_]/g, ' ') || 'Input field';
+
+    const fixed = match.replace('<input', `<input aria-label="${label}"`);
+    fixedHtml = fixedHtml.replace(match, fixed);
+    count++;
+  }
+
+  return { html: fixedHtml, fixed: count > 0, count };
+}
+
+function fixMissingFavicon(html: string): { html: string; fixed: boolean } {
+  if (html.includes('rel="icon"') || html.includes('rel="shortcut icon"') || html.includes('favicon')) {
+    return { html, fixed: false };
+  }
+
+  const faviconTag = '  <link rel="icon" type="image/x-icon" href="/favicon.ico">';
+  if (html.includes('</head>')) {
+    return { html: html.replace('</head>', `${faviconTag}\n</head>`), fixed: true };
+  }
+  return { html, fixed: false };
+}
+
+function fixMissingRobotsMeta(html: string): { html: string; fixed: boolean } {
+  if (html.includes('name="robots"')) return { html, fixed: false };
+
+  const robotsTag = '  <meta name="robots" content="index, follow">';
+  if (html.includes('</head>')) {
+    return { html: html.replace('</head>', `${robotsTag}\n</head>`), fixed: true };
+  }
+  return { html, fixed: false };
+}
+
+function fixMissingPreconnect(html: string): { html: string; fixed: boolean; count: number } {
+  if (html.includes('rel="preconnect"')) return { html, fixed: false, count: 0 };
+
+  const externalDomains = new Set<string>();
+  const urlMatches = html.match(/(?:href|src)=["'](https?:\/\/[a-z0-9.-]+\.[a-z]{2,})/gi) || [];
+
+  for (const match of urlMatches) {
+    const urlMatch = match.match(/["'](https?:\/\/[a-z0-9.-]+\.[a-z]{2,})/i);
+    if (urlMatch && !urlMatch[1].includes('localhost')) {
+      try {
+        const url = new URL(urlMatch[1]);
+        externalDomains.add(url.origin);
+      } catch { /* skip malformed URLs */ }
+    }
+  }
+
+  if (externalDomains.size === 0) return { html, fixed: false, count: 0 };
+
+  const preconnectTags = Array.from(externalDomains)
+    .slice(0, 4)
+    .map((origin) => `  <link rel="preconnect" href="${origin}" crossorigin>`)
+    .join('\n');
+
+  if (html.includes('</head>')) {
+    return { html: html.replace('</head>', `${preconnectTags}\n</head>`), fixed: true, count: externalDomains.size };
+  }
+  return { html, fixed: false, count: 0 };
+}
+
+function fixMissingImageDimensions(html: string): { html: string; fixed: boolean; count: number } {
+  const imgTags = html.match(/<img[^>]+>/gi) || [];
+  let fixedHtml = html;
+  let count = 0;
+
+  for (const img of imgTags) {
+    const hasWidth = /width=["']\d+["']/i.test(img);
+    const hasHeight = /height=["']\d+["']/i.test(img);
+    if (hasWidth && hasHeight) continue;
+
+    let width = '800', height = '600';
+    if (/hero|banner|cover/i.test(img)) { width = '1200'; height = '630'; }
+    else if (/icon|logo/i.test(img)) { width = '48'; height = '48'; }
+    else if (/avatar|profile/i.test(img)) { width = '80'; height = '80'; }
+    else if (/thumbnail|thumb/i.test(img)) { width = '300'; height = '200'; }
+
+    let fixed = img;
+    if (!hasWidth) fixed = fixed.replace('<img', `<img width="${width}"`);
+    if (!hasHeight) fixed = fixed.replace('<img', `<img height="${height}"`);
+    fixedHtml = fixedHtml.replace(img, fixed);
+    count++;
+  }
+
+  return { html: fixedHtml, fixed: count > 0, count };
+}
+
+// ─── Additional Fix Functions (content, link-structure, social, performance) ─
+
+function fixMissingOgImage(html: string): { html: string; fixed: boolean } {
+  if (/property=["']og:image["']/i.test(html)) return { html, fixed: false };
+  if (!html.includes('property="og:title"')) return { html, fixed: false };
+
+  const ogImageTag = '  <meta property="og:image" content="https://picsum.photos/1200/630">\n  <meta property="og:image:width" content="1200">\n  <meta property="og:image:height" content="630">';
+  const twitterImageTag = '  <meta name="twitter:image" content="https://picsum.photos/1200/630">';
+
+  let result = html;
+  if (result.includes('</head>')) {
+    const insert = `${ogImageTag}\n${!result.includes('twitter:image') ? twitterImageTag + '\n' : ''}`;
+    result = result.replace('</head>', `${insert}</head>`);
+  }
+  return { html: result, fixed: true };
+}
+
+function fixExternalLinkSecurity(html: string): { html: string; fixed: boolean; count: number } {
+  const externalLinkRegex = /<a([^>]*href=["']https?:\/\/[^"']*["'][^>]*)>/gi;
+  let count = 0;
+  const result = html.replace(externalLinkRegex, (match, _attrs) => {
+    if (/rel=["'][^"']*noopener/i.test(match)) return match;
+    count++;
+    // Add rel and target if not present
+    let fixed = match;
+    if (!/target=/i.test(fixed)) {
+      fixed = fixed.replace(/(<a)/, '$1 target="_blank"');
+    }
+    if (!/rel=/i.test(fixed)) {
+      fixed = fixed.replace(/(<a)/, '$1 rel="noopener noreferrer"');
+    } else {
+      fixed = fixed.replace(/rel=["']([^"']*)["']/i, 'rel="$1 noopener noreferrer"');
+    }
+    return fixed;
+  });
+  return { html: result, fixed: count > 0, count };
+}
+
+function fixHeroImagePriority(html: string): { html: string; fixed: boolean } {
+  // Add fetchpriority="high" to the first large image (hero/banner)
+  const heroImgRegex = /(<img[^>]*(?:hero|banner|cover|seed\/[^"']*1)[^>]*)>/i;
+  const match = html.match(heroImgRegex);
+  if (!match) return { html, fixed: false };
+  if (match[0].includes('fetchpriority')) return { html, fixed: false };
+
+  const fixed = html.replace(heroImgRegex, '$1 fetchpriority="high">');
+  return { html: fixed, fixed: true };
+}
+
+function fixEmptyHrefLinks(html: string): { html: string; fixed: boolean; count: number } {
+  // Convert href="#" to role="button" where appropriate
+  let count = 0;
+  const result = html.replace(/<a(\s+)href=["']#["']([^>]*)>(.*?)<\/a>/gi, (_match, space1, attrs, content) => {
+    // If it contains "Learn more", "View", or other nav-like text, keep as link but fix href
+    if (/learn more|view|details|see|browse|read/i.test(content)) {
+      return `<a${space1}href="/"${attrs}>${content}</a>`;
+    }
+    count++;
+    return `<button${space1}${attrs} type="button">${content}</button>`;
+  });
+  return { html: result, fixed: count > 0, count };
+}
+
 // ─── Main Fix Function ──────────────────────────────────────────────────────
 
 export async function seoFix(input: SeoFixInput): Promise<SeoFixOutput> {
@@ -324,6 +522,18 @@ export async function seoFix(input: SeoFixInput): Promise<SeoFixOutput> {
       html = canonical.html;
       fixes.push({ category: 'technical', description: 'Added canonical link tag', applied: true });
     }
+
+    const twitter = fixMissingTwitterCards(html, pageName, industry);
+    if (twitter.fixed) {
+      html = twitter.html;
+      fixes.push({ category: 'social-media', description: 'Added Twitter Card meta tags', applied: true });
+    }
+
+    const robots = fixMissingRobotsMeta(html);
+    if (robots.fixed) {
+      html = robots.html;
+      fixes.push({ category: 'meta-tags', description: 'Added robots meta tag (index, follow)', applied: true });
+    }
   }
 
   // Language attribute
@@ -346,6 +556,12 @@ export async function seoFix(input: SeoFixInput): Promise<SeoFixOutput> {
       html = lazy.html;
       fixes.push({ category: 'performance', description: `Added lazy loading to ${lazy.count} image(s)`, applied: true });
     }
+
+    const dimensions = fixMissingImageDimensions(html);
+    if (dimensions.fixed) {
+      html = dimensions.html;
+      fixes.push({ category: 'images', description: `Added width/height to ${dimensions.count} image(s) to prevent CLS`, applied: true });
+    }
   }
 
   // Headings
@@ -363,6 +579,69 @@ export async function seoFix(input: SeoFixInput): Promise<SeoFixOutput> {
     if (skipNav.fixed) {
       html = skipNav.html;
       fixes.push({ category: 'accessibility', description: 'Added skip-to-content navigation link', applied: true });
+    }
+
+    const formLabels = fixMissingFormLabels(html);
+    if (formLabels.fixed) {
+      html = formLabels.html;
+      fixes.push({ category: 'accessibility', description: `Added aria-label to ${formLabels.count} input(s)`, applied: true });
+    }
+  }
+
+  // Structured data
+  if (issueCategories.has('structured-data')) {
+    const jsonLd = fixMissingJsonLd(html, pageName, industry);
+    if (jsonLd.fixed) {
+      html = jsonLd.html;
+      fixes.push({ category: 'structured-data', description: 'Added Schema.org Organization JSON-LD', applied: true });
+    }
+  }
+
+  // Technical fixes
+  if (issueCategories.has('technical')) {
+    const favicon = fixMissingFavicon(html);
+    if (favicon.fixed) {
+      html = favicon.html;
+      fixes.push({ category: 'technical', description: 'Added favicon link', applied: true });
+    }
+  }
+
+  // Performance fixes
+  if (issueCategories.has('performance')) {
+    const preconnect = fixMissingPreconnect(html);
+    if (preconnect.fixed) {
+      html = preconnect.html;
+      fixes.push({ category: 'performance', description: `Added preconnect hints for ${preconnect.count} external domain(s)`, applied: true });
+    }
+
+    const heroPriority = fixHeroImagePriority(html);
+    if (heroPriority.fixed) {
+      html = heroPriority.html;
+      fixes.push({ category: 'performance', description: 'Added fetchpriority="high" to hero image', applied: true });
+    }
+  }
+
+  // Social media fixes
+  if (issueCategories.has('social-media')) {
+    const ogImage = fixMissingOgImage(html);
+    if (ogImage.fixed) {
+      html = ogImage.html;
+      fixes.push({ category: 'social-media', description: 'Added og:image and twitter:image placeholder tags', applied: true });
+    }
+  }
+
+  // Link structure fixes
+  if (issueCategories.has('link-structure')) {
+    const linkSecurity = fixExternalLinkSecurity(html);
+    if (linkSecurity.fixed) {
+      html = linkSecurity.html;
+      fixes.push({ category: 'link-structure', description: `Added noopener noreferrer to ${linkSecurity.count} external link(s)`, applied: true });
+    }
+
+    const emptyLinks = fixEmptyHrefLinks(html);
+    if (emptyLinks.fixed) {
+      html = emptyLinks.html;
+      fixes.push({ category: 'link-structure', description: `Converted ${emptyLinks.count} empty href="#" link(s) to buttons`, applied: true });
     }
   }
 

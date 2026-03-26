@@ -195,6 +195,52 @@ const MODEL_CONTENT: Record<BusinessModel, Record<string, SectionGenerator>> = {
         { title: 'Maria Santos', description: 'Curates our product line and builds partnerships with premium suppliers.', role: 'Product Manager' },
       ].slice(0, count),
     }),
+    'product-grid': (_brand, count, _industry) => ({
+      headline: 'Trending Products',
+      subheadline: `Handpicked favorites our customers can't stop talking about.`,
+      items: [
+        { title: 'Best Seller', description: 'Our most popular product — loved by thousands of happy customers.', badge: 'Best Seller' },
+        { title: 'New Arrival', description: 'Fresh from our latest collection — be the first to get it.', badge: 'New' },
+        { title: 'Staff Pick', description: 'Hand-selected by our team for outstanding quality and value.', badge: 'Staff Pick' },
+        { title: 'Limited Edition', description: 'Exclusive design available for a limited time only.', badge: 'Limited' },
+        { title: 'Top Rated', description: 'Consistently rated 5 stars by our community of shoppers.', badge: 'Top Rated' },
+        { title: 'Great Value', description: 'Premium quality at an unbeatable price point.', badge: 'Value' },
+      ].slice(0, count),
+      ctaText: 'View All Products',
+    }),
+    categories: (_brand, count, _industry) => ({
+      headline: 'Shop by Category',
+      subheadline: 'Find exactly what you\'re looking for in our curated collections.',
+      items: [
+        { title: 'Electronics', description: 'Gadgets, audio, and smart devices for modern living.' },
+        { title: 'Fashion', description: 'Clothing, accessories, and footwear for every style.' },
+        { title: 'Home & Garden', description: 'Everything to make your space beautiful and functional.' },
+        { title: 'Sports & Outdoors', description: 'Gear and apparel for active lifestyles.' },
+        { title: 'Beauty & Wellness', description: 'Skincare, cosmetics, and self-care essentials.' },
+        { title: 'Toys & Games', description: 'Fun for all ages — games, puzzles, and more.' },
+      ].slice(0, count),
+    }),
+    deals: (brand, _count, _industry) => ({
+      headline: 'Flash Sale — Up to 60% Off',
+      subheadline: `Don't miss out on ${brand}'s biggest deals of the season. Premium products at unbelievable prices — limited time only!`,
+      ctaText: 'Shop the Sale',
+    }),
+    'special-offers': (brand, _count, _industry) => ({
+      headline: 'Special Offers',
+      subheadline: `Exclusive deals and discounts — only at ${brand}. Grab them before they're gone!`,
+      ctaText: 'View Offers',
+    }),
+    newsletter: (brand, _count, _industry) => ({
+      headline: 'Get Exclusive Deals',
+      subheadline: `Subscribe to the ${brand} newsletter and get 15% off your first order plus early access to sales.`,
+      ctaText: 'Subscribe',
+    }),
+    cart: (_brand, _count, _industry) => ({
+      headline: 'Your Shopping Cart',
+      subheadline: 'Review your items and proceed to checkout.',
+      ctaText: 'Proceed to Checkout',
+      ctaSecondary: 'Continue Shopping',
+    }),
   },
 
   // ── SERVICE MODEL ─────────────────────────────────────────────────────────
@@ -291,8 +337,8 @@ const MODEL_CONTENT: Record<BusinessModel, Record<string, SectionGenerator>> = {
       ctaSecondary: 'Learn More',
     }),
     features: (_brand, count, _industry) => ({
-      headline: 'Everything You Need',
-      subheadline: 'Built with precision for teams that demand the best.',
+      headline: 'Built for Modern Teams',
+      subheadline: 'Powerful tools crafted with precision for teams that demand the best.',
       items: [
         { title: 'Lightning Fast', description: 'Optimized performance that keeps your workflow moving at full speed.' },
         { title: 'Secure by Default', description: 'Enterprise-grade security with end-to-end encryption and compliance.' },

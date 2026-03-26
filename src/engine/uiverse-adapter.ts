@@ -142,21 +142,23 @@ function remapColors(css: string): string {
 
 // ─── Class Name Normalization ───────────────────────────────────────────────
 
-/** Maps UIverse category to project class convention */
+/** Maps UIverse category to project class convention.
+ *  Uses 'uiverse-' prefix to prevent UIverse CSS (pseudo-elements, animations)
+ *  from leaking into the project's own .card / .btn base classes. */
 const CATEGORY_CLASS_MAP: Record<string, string> = {
-  'buttons': 'btn',
-  'cards': 'card',
-  'inputs': 'input-field',
-  'checkboxes': 'checkbox',
-  'toggle-switches': 'toggle',
-  'radio-buttons': 'radio',
-  'loaders': 'loader',
-  'tooltips': 'tooltip',
-  'badges': 'badge',
-  'navigation': 'nav',
-  'forms': 'form',
-  'dropdowns': 'dropdown',
-  'modals': 'modal',
+  'buttons': 'uiverse-btn',
+  'cards': 'uiverse-card',
+  'inputs': 'uiverse-input',
+  'checkboxes': 'uiverse-checkbox',
+  'toggle-switches': 'uiverse-toggle',
+  'radio-buttons': 'uiverse-radio',
+  'loaders': 'uiverse-loader',
+  'tooltips': 'uiverse-tooltip',
+  'badges': 'uiverse-badge',
+  'navigation': 'uiverse-nav',
+  'forms': 'uiverse-form',
+  'dropdowns': 'uiverse-dropdown',
+  'modals': 'uiverse-modal',
 };
 
 /**
@@ -190,6 +192,55 @@ function normalizeClassNames(
   const newHtml = html.replace(new RegExp(`\\b${escaped}\\b`, 'g'), projectClass);
 
   return { html: newHtml, css: newCss };
+}
+
+// ─── Branded Content Sanitization ───────────────────────────────────────────
+
+/**
+ * Strips hardcoded brand names, logos, and product-specific text from UIverse
+ * component HTML. UIverse components are community-built and often contain
+ * text like "Microsoft", "Get it from", "Windows XP", etc. that must be
+ * removed before injecting into a user's project.
+ */
+function sanitizeBrandedContent(html: string): string {
+  // Remove entire branded text spans/divs (e.g. "Get it from" + "Microsoft")
+  // Pattern: <span>Get it from</span> or <span>Microsoft</span>
+  const BRANDED_TEXTS = [
+    'Microsoft', 'Google', 'Apple', 'Amazon', 'Facebook', 'Twitter',
+    'Instagram', 'GitHub', 'Windows', 'Windows XP', 'macOS', 'Linux',
+    'Get it from', 'Download from', 'Available on', 'Sign in with',
+    'Login with', 'Continue with', 'Powered by',
+  ];
+
+  let result = html;
+
+  for (const brand of BRANDED_TEXTS) {
+    // Replace text content inside tags: <span>Microsoft</span> → <span></span>
+    const textPattern = new RegExp(
+      `(>\\s*)${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s*<)`,
+      'gi'
+    );
+    result = result.replace(textPattern, '$1$2');
+  }
+
+  // Remove logo wrapper divs (e.g. ms-logo with child squares)
+  result = result.replace(
+    /<div\s+class=["']ms-logo["'][^>]*>[\s\S]*?<\/div>\s*(?=<div|<\/)/gi,
+    ''
+  );
+
+  // Clean up empty button-text wrappers left behind
+  result = result.replace(
+    /<div\s+class=["']button-text["'][^>]*>\s*<span>\s*<\/span>\s*<span>\s*<\/span>\s*<\/div>/gi,
+    ''
+  );
+
+  // Remove Windows-specific branding in loaders
+  result = result.replace(/<p\s+class=["']top["'][^>]*>\s*Microsoft\s*<\/p>/gi, '');
+  result = result.replace(/<p\s+class=["']mid["'][^>]*>\s*Windows\s*<span>XP<\/span>\s*<\/p>/gi, '');
+  result = result.replace(/<p\s+class=["']bottom["'][^>]*>\s*Professional\s*<\/p>/gi, '');
+
+  return result;
 }
 
 // ─── Keyframe Extraction ────────────────────────────────────────────────────
@@ -230,12 +281,15 @@ function adaptSingleComponent(
     css = normalized.css;
   }
 
-  // Step 4: Add project-level base properties if missing
+  // Step 4: Sanitize branded/hardcoded text from HTML
+  html = sanitizeBrandedContent(html);
+
+  // Step 5: Add project-level base properties if missing
   if (projectClassName === 'btn' && !css.includes('cursor:') && !css.includes('cursor :')) {
     css = css.replace(`.${projectClassName} {`, `.${projectClassName} {\n  cursor: pointer;`);
   }
 
-  // Step 5: Add CSS comment header
+  // Step 6: Add CSS comment header
   css = `/* UIverse Component: ${component.name} (${component.category}) */\n/* Source: ${component.sourceUrl} */\n/* Animation Score: ${component.animationScore}/100 */\n${css}`;
 
   return {
@@ -533,9 +587,11 @@ export function instantiateCard(
       const tag = outerMatch[1];
       let attrs = outerMatch[2];
 
-      // Add our classes
+      // Use project's card class only — UIverse wrapper styles (::before/::after blobs,
+      // padding overrides) break product/category grid cards. Strip UIverse class.
       if (attrs.includes('class="')) {
-        attrs = attrs.replace(/class="([^"]*)"/, `class="$1 ${extraClasses} animate-on-scroll"`);
+        // Remove any uiverse- prefixed class and replace with project classes
+        attrs = attrs.replace(/class="[^"]*"/, `class="card ${extraClasses} animate-on-scroll"`);
       } else {
         attrs += ` class="card ${extraClasses} animate-on-scroll"`;
       }
@@ -579,8 +635,9 @@ export function instantiateCard(
     if (localMatch) {
       const tag = localMatch[1];
       let attrs = localMatch[2];
+      // Use project card class only — strip local component's original class
       if (attrs.includes('class="')) {
-        attrs = attrs.replace(/class="([^"]*)"/, `class="$1 ${extraClasses} animate-on-scroll"`);
+        attrs = attrs.replace(/class="[^"]*"/, `class="card ${extraClasses} animate-on-scroll"`);
       } else {
         attrs += ` class="card ${extraClasses} animate-on-scroll"`;
       }
@@ -648,26 +705,52 @@ export function instantiateInput(
 
   const uiverseHtml = getUIverseHtml(map, 'inputs');
   if (uiverseHtml) {
-    // UIverse input exists — adapt it
-    let html = uiverseHtml;
+    // UIverse input components can be complex search widgets with wrappers,
+    // glow effects, result panels, etc. We only want the <input> element
+    // and apply UIverse CSS class to a clean wrapper — NOT the full component.
+    const inputMatch = uiverseHtml.match(/<input[^>]*>/i);
+    if (inputMatch) {
+      let inputTag = inputMatch[0];
 
-    // Replace placeholder, name, type, id attributes
-    html = html.replace(/placeholder="[^"]*"/, `placeholder="${attrs.placeholder || ''}"`);
-    html = html.replace(/name="[^"]*"/, `name="${attrs.name}"`);
-    html = html.replace(/type="[^"]*"/, `type="${type}"`);
-    html = html.replace(/id="[^"]*"/, `id="${id}"`);
+      // Replace/add attributes on the extracted <input>
+      if (inputTag.includes('placeholder=')) {
+        inputTag = inputTag.replace(/placeholder="[^"]*"/, `placeholder="${attrs.placeholder || ''}"`);
+      } else {
+        inputTag = inputTag.replace('<input', `<input placeholder="${attrs.placeholder || ''}"`);
+      }
+      if (inputTag.includes('name=')) {
+        inputTag = inputTag.replace(/name="[^"]*"/, `name="${attrs.name}"`);
+      } else {
+        inputTag = inputTag.replace('<input', `<input name="${attrs.name}"`);
+      }
+      if (inputTag.includes('type=')) {
+        inputTag = inputTag.replace(/type="[^"]*"/, `type="${type}"`);
+      } else {
+        inputTag = inputTag.replace('<input', `<input type="${type}"`);
+      }
+      // Set id
+      inputTag = inputTag.includes('id=')
+        ? inputTag.replace(/id="[^"]*"/, `id="${id}"`)
+        : inputTag.replace('<input', `<input id="${id}"`);
 
-    // Add required if needed
-    if (attrs.required && !html.includes('required')) {
-      html = html.replace(/<input\b/, '<input required aria-required="true"');
+      // Ensure it has the form-input class
+      if (inputTag.includes('class="')) {
+        inputTag = inputTag.replace(/class="([^"]*)"/, `class="$1 form-input"`);
+      } else {
+        inputTag = inputTag.replace('<input', '<input class="form-input"');
+      }
+
+      // Add required if needed
+      if (attrs.required && !inputTag.includes('required')) {
+        inputTag = inputTag.replace('<input', '<input required aria-required="true"');
+      }
+
+      // Add label
+      const labelHtml = attrs.label ? `<label for="${id}" class="form-label">${attrs.label}</label>\n` : '';
+
+      return `${labelHtml}${inputTag}`;
     }
-
-    // Add label if the UIverse component doesn't have one
-    if (attrs.label && !html.includes('<label')) {
-      html = `<label for="${id}" class="form-label">${attrs.label}</label>\n${html}`;
-    }
-
-    return html;
+    // If no <input> found in UIverse HTML, fall through to standard input
   }
 
   // Fallback: standard input
