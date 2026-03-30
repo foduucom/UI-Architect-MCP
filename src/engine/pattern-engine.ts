@@ -42,6 +42,9 @@ function selectPatternStyle(industry: Industry): PatternStyle {
     fitness: 'geometric',
     coaching: 'gradient',
     consulting: 'geometric',
+    wellness: 'organic',
+    hospitality: 'noise',
+    entertainment: 'blob',
   };
 
   return patternMap[industry];

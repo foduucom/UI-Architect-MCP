@@ -12,6 +12,8 @@ import type { DesignTokens, Framework } from '../engine/types.js';
 import { generateSection, type GenerateSectionOutput, type PageInfo, type SectionContent } from './generate-section.js';
 import type { UIverseComponentMap } from '../engine/uiverse-adapter.js';
 import type { GeneratedContent } from './generate-content.js';
+import { generateBaseAnimationCss, generateHeroEntranceCss } from '../engine/animation-css.js';
+import { classifyBusinessModel, classifyVenueSubtype, type VenueSubtype } from '../engine/business-model.js';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -264,11 +266,182 @@ ${pages
 
 // ─── Generate Footer Component ──────────────────────────────────────────────
 
-function generateFooter(framework: Framework, brandName?: string): string {
+function generateFooter(framework: Framework, brandName?: string, industry?: string, pages?: Array<{ name: string; slug: string; isHomepage?: boolean }>): string {
   const brand = resolveBrandName(brandName);
+  const year = new Date().getFullYear();
+  const ind = (industry || '').toLowerCase();
+
+  // Determine footer columns by industry type — uses shared business model classifier
+  // so ANY venue/product/saas keyword is automatically recognized
+  const model = ind ? classifyBusinessModel(ind) : 'service';
+  const isEcommerce = model === 'product';
+  const isVenue = model === 'venue';
+  const isSaas = model === 'saas';
+
+  let columnsHtml: string;
+  if (isEcommerce) {
+    columnsHtml = `
+      <div class="footer-col">
+        <h4 class="footer-heading">${brand}</h4>
+        <p class="footer-desc">Your trusted shopping destination for quality products at great prices.</p>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Shop</h4>
+        <ul class="footer-links">
+          <li><a href="#">New Arrivals</a></li>
+          <li><a href="#">Best Sellers</a></li>
+          <li><a href="#">Sale</a></li>
+          <li><a href="#">Gift Cards</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Customer Service</h4>
+        <ul class="footer-links">
+          <li><a href="#">Contact Us</a></li>
+          <li><a href="#">Shipping & Returns</a></li>
+          <li><a href="#">FAQs</a></li>
+          <li><a href="#">Order Tracking</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Company</h4>
+        <ul class="footer-links">
+          <li><a href="#">About Us</a></li>
+          <li><a href="#">Careers</a></li>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Service</a></li>
+        </ul>
+      </div>`;
+  } else if (isVenue) {
+    const subtype = industry ? classifyVenueSubtype(industry) : 'general';
+    const VENUE_DESC: Record<string, string> = {
+      food: 'A dining experience you will not forget.',
+      fitness: 'Your journey to a stronger you starts here.',
+      wellness: 'Where self-care meets expert care.',
+      hospitality: 'Your home away from home.',
+      entertainment: 'Where great experiences come to life.',
+      general: 'An unforgettable experience awaits you.',
+    };
+    const VENUE_HOURS: Record<string, string[]> = {
+      food: ['Mon\u2013Fri: 11am \u2013 10pm', 'Sat\u2013Sun: 10am \u2013 11pm'],
+      fitness: ['Mon\u2013Fri: 5am \u2013 10pm', 'Sat\u2013Sun: 7am \u2013 8pm'],
+      wellness: ['Mon\u2013Fri: 9am \u2013 7pm', 'Sat: 9am \u2013 5pm', 'Sun: Closed'],
+      hospitality: ['Check-in: 3:00 PM', 'Check-out: 11:00 AM'],
+      entertainment: ['Mon\u2013Thu: 12pm \u2013 10pm', 'Fri\u2013Sun: 10am \u2013 12am'],
+      general: ['Mon\u2013Fri: 9am \u2013 6pm', 'Sat\u2013Sun: 10am \u2013 4pm'],
+    };
+
+    // Build links from actual project pages instead of hardcoding
+    const pageLinks = (pages || [])
+      .filter(p => !p.isHomepage)
+      .slice(0, 4)
+      .map(p => {
+        const href = framework === 'html' ? `${p.slug}.html` : `/${p.slug}`;
+        return `<li><a href="${href}">${p.name}</a></li>`;
+      })
+      .join('\n          ');
+
+    const hoursItems = (VENUE_HOURS[subtype] || VENUE_HOURS.general)
+      .map(h => `<li>${h}</li>`)
+      .join('\n          ');
+
+    columnsHtml = `
+      <div class="footer-col">
+        <h4 class="footer-heading">${brand}</h4>
+        <p class="footer-desc">${VENUE_DESC[subtype] || VENUE_DESC.general}</p>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Quick Links</h4>
+        <ul class="footer-links">
+          ${pageLinks || '<li><a href="#">About</a></li>\n          <li><a href="#">Contact</a></li>'}
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Hours</h4>
+        <ul class="footer-links">
+          ${hoursItems}
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Contact</h4>
+        <ul class="footer-links">
+          <li><a href="mailto:info@${brand.toLowerCase().replace(/\s+/g, '')}.com">info@${brand.toLowerCase().replace(/\s+/g, '')}.com</a></li>
+          <li><a href="tel:+15551234567">(555) 123-4567</a></li>
+          <li><a href="#">Find Us on Map</a></li>
+        </ul>
+      </div>`;
+  } else if (isSaas) {
+    columnsHtml = `
+      <div class="footer-col">
+        <h4 class="footer-heading">${brand}</h4>
+        <p class="footer-desc">Powerful tools for modern teams.</p>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Product</h4>
+        <ul class="footer-links">
+          <li><a href="#">Features</a></li>
+          <li><a href="#">Pricing</a></li>
+          <li><a href="#">Integrations</a></li>
+          <li><a href="#">Changelog</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Resources</h4>
+        <ul class="footer-links">
+          <li><a href="#">Documentation</a></li>
+          <li><a href="#">API Reference</a></li>
+          <li><a href="#">Blog</a></li>
+          <li><a href="#">Community</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Company</h4>
+        <ul class="footer-links">
+          <li><a href="#">About</a></li>
+          <li><a href="#">Careers</a></li>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Terms</a></li>
+        </ul>
+      </div>`;
+  } else {
+    // Default: corporate / service / generic
+    columnsHtml = `
+      <div class="footer-col">
+        <h4 class="footer-heading">${brand}</h4>
+        <p class="footer-desc">Professional solutions you can trust.</p>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Services</h4>
+        <ul class="footer-links">
+          <li><a href="#">Our Services</a></li>
+          <li><a href="#">Case Studies</a></li>
+          <li><a href="#">Pricing</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Company</h4>
+        <ul class="footer-links">
+          <li><a href="#">About Us</a></li>
+          <li><a href="#">Team</a></li>
+          <li><a href="#">Careers</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4 class="footer-heading">Legal</h4>
+        <ul class="footer-links">
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Service</a></li>
+        </ul>
+      </div>`;
+  }
+
   const footerContent = `
-    <div class="footer-content">
-      <p>&copy; ${new Date().getFullYear()} ${brand}. All rights reserved.</p>
+    <div class="footer-grid">
+${columnsHtml}
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; ${year} ${brand}. All rights reserved.</p>
     </div>
 `;
 
@@ -363,9 +536,28 @@ function generateVanillaHtmlPage(
   const pageTitle = pageSlug === 'index'
     ? `${brand}${industryLabel ? ` — ${industryLabel}` : ''}`
     : `${pageName} | ${brand}`;
-  const pageDescription = pageSlug === 'index'
-    ? `Discover ${brand}${industryLabel ? ` — your trusted ${industryLabel} destination` : ''}. Premium quality, exceptional service, and a commitment to excellence.`
-    : `${pageName} — Explore what ${brand} has to offer.${industryLabel ? ` Trusted ${industryLabel} professionals.` : ''}`;
+  // Model-aware meta descriptions — different copy for shops vs venues vs SaaS vs services
+  const metaModel = industry ? classifyBusinessModel(industry) : 'service';
+  const META_TEMPLATES: Record<string, { home: string; subpage: string }> = {
+    product: {
+      home: `Shop ${brand} for premium ${industryLabel || 'products'}. Quality selection, fast shipping, and satisfaction guaranteed.`,
+      subpage: `${pageName} — Browse ${brand}'s curated ${industryLabel || 'collection'}. Find exactly what you're looking for.`,
+    },
+    venue: {
+      home: `Experience ${brand}${industryLabel ? ` — ${industryLabel}` : ''} crafted with passion. Visit us and discover something special.`,
+      subpage: `${pageName} — Explore what makes ${brand} a destination worth visiting.`,
+    },
+    saas: {
+      home: `${brand}${industryLabel ? ` — powerful ${industryLabel} tools` : ''} for modern teams. Start your free trial today.`,
+      subpage: `${pageName} — Discover how ${brand} can help you work smarter.`,
+    },
+    service: {
+      home: `${brand}${industryLabel ? ` — trusted ${industryLabel} professionals` : ''}. Expert solutions tailored to your needs.`,
+      subpage: `${pageName} — Learn more about ${brand}'s expert ${industryLabel || 'services'}.`,
+    },
+  };
+  const metaTemplate = META_TEMPLATES[metaModel] || META_TEMPLATES.service;
+  const pageDescription = pageSlug === 'index' ? metaTemplate.home : metaTemplate.subpage;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -612,11 +804,12 @@ export function generateFullPage(
     ? generateNavigation(input.allPages, framework, input.designTokens, resolvedBrand, undefined)
     : '';
   const footerHtml = input.includeFooter !== false
-    ? generateFooter(framework, resolvedBrand)
+    ? generateFooter(framework, resolvedBrand, input.industry || (input.designTokens?.industry as string), input.allPages)
     : '';
 
   // Generate each page
-  for (const pageDef of input.pagesToGenerate) {
+  for (let pageIndex = 0; pageIndex < input.pagesToGenerate.length; pageIndex++) {
+    const pageDef = input.pagesToGenerate[pageIndex];
     // Only generate content sections — nav and footer are handled by the page wrapper
     // to avoid duplicate nav/footer in the output
     const sectionsToGenerate = pageDef.sections.filter(
@@ -646,6 +839,8 @@ export function generateFullPage(
           currentPageSlug: pageDef.slug,
           brandName: input.brandName || null,
           skipUIverseInjection: true,
+          // Content variation — pageIndex * 10 + sectionIndex ensures different content per page
+          variationIndex: pageIndex * 10 + i,
         });
 
         sectionOutputs.push(sectionOutput);
@@ -794,12 +989,14 @@ button { cursor: pointer; border: none; background: none; }`,
   --color-accent: ${tokens.colors?.accent || '#F59E0B'};
   --color-accent-light: ${tokens.colors?.accentLight || '#fbd99d'};
   --color-neutral-900: ${tokens.colors?.neutral900 || '#1c1717'};
+  --color-neutral-900-rgb: ${tokens.colors?.neutral900Rgb || '28, 23, 23'};
   --color-neutral-700: ${tokens.colors?.neutral700 || '#453b3b'};
   --color-neutral-500: ${tokens.colors?.neutral500 || '#7c6a6a'};
   --color-neutral-300: ${tokens.colors?.neutral300 || '#bdb2b2'};
   --color-neutral-200: ${tokens.colors?.neutral200 || '#d5cdcd'};
   --color-neutral-100: ${tokens.colors?.neutral100 || '#efecec'};
   --color-neutral-50: ${tokens.colors?.neutral50 || '#f8f7f7'};
+  --color-neutral-50-rgb: ${tokens.colors?.neutral50Rgb || '248, 247, 247'};
   --color-success: #22C55E;
   --color-warning: #F59E0B;
   --color-error: #EF4444;
@@ -898,61 +1095,9 @@ h1, h2, h3, h4, h5, h6 {
   // 3. animations.css — scroll animations + hover effects
   sharedFiles.push({
     filename: 'animations.css',
-    content: `/* Scroll Animations */
-.animate-on-scroll {
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.6s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
-}
-.animate-on-scroll.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
+    content: `${generateBaseAnimationCss()}
 
-.stagger-children > * {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo);
-}
-.stagger-children.visible > *:nth-child(1) { transition-delay: 0ms; }
-.stagger-children.visible > *:nth-child(2) { transition-delay: 100ms; }
-.stagger-children.visible > *:nth-child(3) { transition-delay: 200ms; }
-.stagger-children.visible > *:nth-child(4) { transition-delay: 300ms; }
-.stagger-children.visible > *:nth-child(5) { transition-delay: 400ms; }
-.stagger-children.visible > *:nth-child(6) { transition-delay: 500ms; }
-.stagger-children.visible > * {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes fadeInLeft {
-  from { opacity: 0; transform: translateX(-30px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-@keyframes fadeInRight {
-  from { opacity: 0; transform: translateX(30px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
-}
-@keyframes pulse-badge {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-.hero-content > * {
-  animation: fadeInUp 0.8s var(--ease-out-expo) both;
-}
-.hero-content > *:nth-child(1) { animation-delay: 0.1s; }
-.hero-content > *:nth-child(2) { animation-delay: 0.25s; }
-.hero-content > *:nth-child(3) { animation-delay: 0.4s; }
-.hero-content > *:nth-child(4) { animation-delay: 0.55s; }
+${generateHeroEntranceCss()}
 
 ${allSharedCss}`,
   });
@@ -961,8 +1106,8 @@ ${allSharedCss}`,
   const componentCssForShared = input.uiverseComponents?.combinedCss || '';
   const componentKeyframesForShared = input.uiverseComponents?.combinedKeyframes || '';
   const isDark = tokens.themeMode === 'dark';
-  const navBg = isDark ? 'rgba(28, 29, 33, 0.85)' : 'rgba(248, 247, 247, 0.85)';
-  const navBgScrolled = isDark ? 'rgba(28, 29, 33, 0.98)' : 'rgba(248, 247, 247, 0.98)';
+  const navBg = isDark ? 'rgba(var(--color-neutral-900-rgb), 0.85)' : 'rgba(var(--color-neutral-50-rgb), 0.85)';
+  const navBgScrolled = isDark ? 'rgba(var(--color-neutral-900-rgb), 0.98)' : 'rgba(var(--color-neutral-50-rgb), 0.98)';
   sharedFiles.push({
     filename: 'components.css',
     content: `/* Component Styles — Navbar, Buttons, Cards, Inputs, Footer */
@@ -1193,15 +1338,64 @@ ${allSharedCss}`,
 
 /* ─── Footer ─────────────────────────────────────────────── */
 .site-footer {
-  background: ${isDark ? 'var(--color-neutral-100)' : 'var(--color-neutral-900)'};
-  color: ${isDark ? 'var(--color-neutral-500)' : 'var(--color-neutral-300)'};
+  background: ${isDark ? 'var(--color-neutral-900)' : 'var(--color-neutral-100)'};
+  color: ${isDark ? 'var(--color-neutral-300)' : 'var(--color-neutral-500)'};
   padding: var(--space-3xl) 0 var(--space-xl);
+  border-top: 1px solid ${isDark ? 'var(--color-neutral-700)' : 'var(--color-neutral-200)'};
 }
 .site-footer a {
-  color: ${isDark ? 'var(--color-neutral-500)' : 'var(--color-neutral-300)'};
+  color: ${isDark ? 'var(--color-neutral-300)' : 'var(--color-neutral-500)'};
   transition: color var(--transition-fast);
 }
-.site-footer a:hover { color: var(--color-primary-light); }
+.site-footer a:hover { color: var(--color-primary); }
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(3, 1fr);
+  gap: var(--space-2xl);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 var(--space-lg) var(--space-2xl);
+}
+@media (max-width: 768px) {
+  .footer-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .footer-grid { grid-template-columns: 1fr; }
+}
+.footer-heading {
+  font-family: var(--font-heading);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: ${isDark ? 'var(--color-neutral-50)' : 'var(--color-neutral-900)'};
+  margin-bottom: var(--space-lg);
+}
+.footer-desc {
+  font-size: var(--fs-small);
+  line-height: 1.6;
+  color: ${isDark ? 'var(--color-neutral-400)' : 'var(--color-neutral-500)'};
+}
+.footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.footer-links li {
+  margin-bottom: var(--space-sm);
+  font-size: var(--fs-small);
+}
+.footer-bottom {
+  text-align: center;
+  padding-top: var(--space-xl);
+  border-top: 1px solid ${isDark ? 'var(--color-neutral-700)' : 'var(--color-neutral-200)'};
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-left: var(--space-lg);
+  padding-right: var(--space-lg);
+}
+.footer-bottom p {
+  font-size: var(--fs-small);
+  color: var(--color-neutral-500);
+}
 
 /* ─── UIverse Component Overrides ─────────────────────────── */
 ${componentCssForShared}

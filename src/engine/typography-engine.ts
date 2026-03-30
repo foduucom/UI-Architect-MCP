@@ -96,7 +96,7 @@ const FONT_PAIRINGS: FontPairingEntry[] = [
 
 // ─── Font Selection Logic ────────────────────────────────────────────────────
 
-export function selectFontPairing(industry: Industry, tone: Tone): FontPairing {
+export function selectFontPairing(industry: Industry, tone: Tone, brandName?: string): FontPairing {
   // Score each pairing by how well it matches
   const scored = FONT_PAIRINGS.map((fp) => {
     let score = 0;
@@ -108,7 +108,19 @@ export function selectFontPairing(industry: Industry, tone: Tone): FontPairing {
   // Sort by score descending, pick the best
   scored.sort((a, b) => b.score - a.score);
 
-  const best = scored[0];
+  // Brand-based tiebreaker — when multiple pairings score equally,
+  // use brandName hash to pick among top scorers for variety
+  const topScore = scored[0].score;
+  const topTied = scored.filter(s => s.score === topScore);
+  let best = topTied[0];
+  if (brandName && topTied.length > 1) {
+    let hash = 0;
+    for (let i = 0; i < brandName.length; i++) {
+      hash = ((hash << 5) - hash + brandName.charCodeAt(i)) | 0;
+    }
+    best = topTied[Math.abs(hash) % topTied.length];
+  }
+
   return {
     heading: best.heading,
     body: best.body,
@@ -118,8 +130,8 @@ export function selectFontPairing(industry: Industry, tone: Tone): FontPairing {
 
 // ─── Typography System Generator ─────────────────────────────────────────────
 
-export function generateTypography(industry: Industry, tone: Tone): TypographySystem {
-  const fonts = selectFontPairing(industry, tone);
+export function generateTypography(industry: Industry, tone: Tone, brandName?: string): TypographySystem {
+  const fonts = selectFontPairing(industry, tone, brandName);
 
   return {
     fonts,

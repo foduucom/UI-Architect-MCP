@@ -458,16 +458,30 @@ function fixHeroImagePriority(html: string): { html: string; fixed: boolean } {
 }
 
 function fixEmptyHrefLinks(html: string): { html: string; fixed: boolean; count: number } {
-  // Convert href="#" to role="button" where appropriate
+  // Convert href="#" to href="/" for navigation-like links, or to <button> for actions.
+  // Footer links must stay as <a> tags — they are navigation, not actions.
   let count = 0;
-  const result = html.replace(/<a(\s+)href=["']#["']([^>]*)>(.*?)<\/a>/gi, (_match, space1, attrs, content) => {
-    // If it contains "Learn more", "View", or other nav-like text, keep as link but fix href
+
+  // First, protect footer links by temporarily marking them
+  const footerRegex = /(<footer[\s\S]*?<\/footer>)/gi;
+  const footerBlocks: string[] = [];
+  let protectedHtml = html.replace(footerRegex, (match) => {
+    footerBlocks.push(match);
+    return `__FOOTER_BLOCK_${footerBlocks.length - 1}__`;
+  });
+
+  // Fix non-footer href="#" links
+  protectedHtml = protectedHtml.replace(/<a(\s+)href=["']#["']([^>]*)>(.*?)<\/a>/gi, (_match, space1, attrs, content) => {
     if (/learn more|view|details|see|browse|read/i.test(content)) {
       return `<a${space1}href="/"${attrs}>${content}</a>`;
     }
     count++;
     return `<button${space1}${attrs} type="button">${content}</button>`;
   });
+
+  // Restore footer blocks (keep <a href="#"> as-is — they're navigation placeholders)
+  const result = protectedHtml.replace(/__FOOTER_BLOCK_(\d+)__/g, (_m, idx) => footerBlocks[Number(idx)]);
+
   return { html: result, fixed: count > 0, count };
 }
 

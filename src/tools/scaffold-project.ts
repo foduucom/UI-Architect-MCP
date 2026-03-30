@@ -20,6 +20,7 @@ import {
   transitionsToCssVariables,
 } from '../engine/typography-engine.js';
 import type { UIverseComponentMap } from '../engine/uiverse-adapter.js';
+import { generateBaseAnimationCss, generateAnimationsJs as sharedAnimationsJs } from '../engine/animation-css.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -139,69 +140,16 @@ function generateAnimationsCss(uiverse?: UIverseComponentMap | null): string {
   const uiverseKeyframes = uiverse?.combinedKeyframes || '';
   const hasUIverse = !!(uiverse && uiverseComponentCss);
 
+  // Use shared base animation CSS — single source of truth
+  const baseAnimations = generateBaseAnimationCss();
+
   return `/**
  * Animation System
  * Scroll-triggered, hover, and ambient animations
  *${hasUIverse ? '\n * Component styles powered by UIverse.io open-source library' : ''}
  */
 
-/* ─── Scroll Entrance Animations ─── */
-
-.animate-on-scroll {
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.animate-on-scroll.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.animate-from-left {
-  opacity: 0;
-  transform: translateX(-40px);
-  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.animate-from-left.is-visible {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.animate-from-right {
-  opacity: 0;
-  transform: translateX(40px);
-  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.animate-from-right.is-visible {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.animate-scale-in {
-  opacity: 0;
-  transform: scale(0.85);
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.animate-scale-in.is-visible {
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* Staggered children animation */
-.stagger-children .animate-on-scroll:nth-child(1) { transition-delay: 0ms; }
-.stagger-children .animate-on-scroll:nth-child(2) { transition-delay: 100ms; }
-.stagger-children .animate-on-scroll:nth-child(3) { transition-delay: 200ms; }
-.stagger-children .animate-on-scroll:nth-child(4) { transition-delay: 300ms; }
-.stagger-children .animate-on-scroll:nth-child(5) { transition-delay: 400ms; }
-.stagger-children .animate-on-scroll:nth-child(6) { transition-delay: 500ms; }
+${baseAnimations}
 
 ${hasUIverse ? `
 /* ═══════════════════════════════════════════════════════════════════════ */
@@ -332,30 +280,7 @@ ${uiverseKeyframes}
 }
 
 function generateAnimationsJs(): string {
-  return `/**
- * Animation Handler
- * Manages scroll-triggered entrance animations using Intersection Observer
- */
-
-const observerOptions = {
-  threshold: 0.15,
-  rootMargin: '0px 0px -50px 0px'
-};
-
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('is-visible');
-      // Only animate once
-      observer.unobserve(entry.target);
-    }
-  });
-}, observerOptions);
-
-// Observe all animated elements
-document.querySelectorAll('.animate-on-scroll, .animate-from-left, .animate-from-right, .animate-scale-in').forEach(el => {
-  observer.observe(el);
-});`;
+  return sharedAnimationsJs();
 }
 
 // ─── HTML Scaffold Generators ────────────────────────────────────────────
@@ -652,13 +577,13 @@ onMounted(() => {
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
+        entry.target.classList.add('visible');
         observer.unobserve(entry.target);
       }
     });
   }, { threshold: 0.15 });
 
-  document.querySelectorAll('.animate-on-scroll').forEach(el => {
+  document.querySelectorAll('.animate-on-scroll, .animate-from-left, .animate-from-right, .animate-scale-in, .stagger-children').forEach(el => {
     observer.observe(el);
   });
 });
@@ -1190,13 +1115,13 @@ onMounted(() => {
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
+        entry.target.classList.add('visible');
         observer.unobserve(entry.target);
       }
     });
   }, { threshold: 0.15 });
 
-  document.querySelectorAll('.animate-on-scroll').forEach(el => {
+  document.querySelectorAll('.animate-on-scroll, .animate-from-left, .animate-from-right, .animate-scale-in, .stagger-children').forEach(el => {
     observer.observe(el);
   });
 });
@@ -1693,7 +1618,7 @@ The project includes production-ready animations:
 - **State changes**: Focus rings, active states
 - **Ambient**: Float, pulse-glow, gradient-shift
 
-Use the \`is-visible\` class (added by \`js/animations.js\`) or add animation classes to elements.`;
+Use the \`visible\` class (added by \`js/animations.js\`) or add animation classes to elements.`;
 }
 
 function getFrameworkFilesSummary(framework: Framework): string {

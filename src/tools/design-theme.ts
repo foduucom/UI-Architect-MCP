@@ -28,7 +28,8 @@ const VALID_INDUSTRIES: Industry[] = [
   'finance', 'healthcare', 'technology', 'ecommerce', 'education',
   'food', 'realestate', 'legal', 'creative', 'environmental',
   'gaming', 'nonprofit', 'luxury', 'startup', 'corporate',
-  'fitness', 'coaching', 'consulting',
+  'fitness', 'wellness', 'hospitality', 'entertainment',
+  'coaching', 'consulting',
 ];
 
 const VALID_TONES: Tone[] = [
@@ -90,7 +91,6 @@ function resolveIndustry(input: string): Industry {
     'foundation': 'nonprofit',
     'esports': 'gaming',
     'game': 'gaming',
-    'entertainment': 'gaming',
     'fashion': 'luxury',
     'jewelry': 'luxury',
     'premium': 'luxury',
@@ -108,6 +108,25 @@ function resolveIndustry(input: string): Industry {
     'mentor': 'coaching',
     'consultant': 'consulting',
     'advisory': 'consulting',
+    // Wellness
+    'salon': 'wellness',
+    'spa': 'wellness',
+    'barbershop': 'wellness',
+    'hair salon': 'wellness',
+    'nail salon': 'wellness',
+    'massage': 'wellness',
+    // Hospitality
+    'hotel': 'hospitality',
+    'resort': 'hospitality',
+    'hostel': 'hospitality',
+    'bed and breakfast': 'hospitality',
+    // Entertainment
+    'cinema': 'entertainment',
+    'theater': 'entertainment',
+    'arcade': 'entertainment',
+    'bowling': 'entertainment',
+    'escape room': 'entertainment',
+    'nightclub': 'entertainment',
   };
 
   for (const [alias, industry] of Object.entries(aliases)) {
@@ -169,8 +188,8 @@ export function designTheme(input: DesignThemeInput): DesignThemeOutput {
   const themePreference = input.themePreference || 'auto';
 
   // Generate all subsystems
-  const { palette, resolvedTheme } = generateColorPalette(industry, tone, themePreference, input.brandColor);
-  const typography = generateTypography(industry, tone);
+  const { palette, resolvedTheme } = generateColorPalette(industry, tone, themePreference, input.brandColor, input.brandName);
+  const typography = generateTypography(industry, tone, input.brandName);
   const spacing = generateSpacing();
   const shadows = generateShadows();
   const radius = generateRadius(tone);

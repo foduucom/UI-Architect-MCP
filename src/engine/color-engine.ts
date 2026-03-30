@@ -145,6 +145,27 @@ const INDUSTRY_PROFILES: Record<Industry, IndustryColorProfile> = {
     recommendedTheme: 'light',
     avoid: ['#EC4899', '#F472B6', '#667eea', '#764ba2'],
   },
+  wellness: {
+    primaries: ['#7C3AED', '#8B5CF6', '#D946EF', '#A855F7'],
+    secondaries: ['#059669', '#0D9488', '#14B8A6', '#10B981'],
+    accents: ['#F59E0B', '#FBBF24', '#F0ABFC', '#E879F9'],
+    recommendedTheme: 'light',
+    avoid: ['#EF4444', '#DC2626', '#000000', '#111111'],
+  },
+  hospitality: {
+    primaries: ['#92400E', '#B45309', '#1E3A5F', '#1E40AF'],
+    secondaries: ['#059669', '#0891B2', '#D4A843', '#C2956B'],
+    accents: ['#F59E0B', '#FBBF24', '#0EA5E9', '#22D3EE'],
+    recommendedTheme: 'light',
+    avoid: ['#EF4444', '#EC4899', '#667eea', '#764ba2'],
+  },
+  entertainment: {
+    primaries: ['#7C3AED', '#6D28D9', '#DC2626', '#E11D48'],
+    secondaries: ['#F59E0B', '#FBBF24', '#0EA5E9', '#06B6D4'],
+    accents: ['#22D3EE', '#A855F7', '#F97316', '#FB923C'],
+    recommendedTheme: 'dark',
+    avoid: ['#6B7280', '#9CA3AF', '#D1D5DB', '#E5E7EB'],
+  },
 };
 
 // ─── Color Utility Functions ─────────────────────────────────────────────────
@@ -322,11 +343,13 @@ export function generateColorPalette(
   industry: Industry,
   tone: Tone,
   themePreference?: ThemeMode,
-  brandColor?: string
+  brandColor?: string,
+  brandName?: string
 ): { palette: ColorPalette; resolvedTheme: 'light' | 'dark' } {
   const profile = INDUSTRY_PROFILES[industry];
   const resolvedTheme = resolveThemeMode(industry, themePreference);
-  const rng = seededRandom(`${industry}-${tone}-${resolvedTheme}`);
+  // Include brandName in seed so different brands in the same industry get different palettes
+  const rng = seededRandom(`${industry}-${tone}-${resolvedTheme}-${brandName || ''}`);
 
   // Pick primary (or use brand color if provided)
   const primary = brandColor || pickRandom(profile.primaries, rng);
@@ -357,6 +380,8 @@ export function generateColorPalette(
   }
 
   const { r, g, b } = hexToRgb(primary);
+  const n900 = hexToRgb(adjustedNeutral900);
+  const n50 = hexToRgb(neutrals.neutral50);
 
   const palette: ColorPalette = {
     primary,
@@ -369,12 +394,14 @@ export function generateColorPalette(
     accent,
     accentLight,
     neutral900: adjustedNeutral900,
+    neutral900Rgb: `${n900.r}, ${n900.g}, ${n900.b}`,
     neutral700: neutrals.neutral700,
     neutral500: neutrals.neutral500,
     neutral300: neutrals.neutral300,
     neutral200: neutrals.neutral200,
     neutral100: neutrals.neutral100,
     neutral50: neutrals.neutral50,
+    neutral50Rgb: `${n50.r}, ${n50.g}, ${n50.b}`,
     success: '#22C55E',
     successLight: '#DCFCE7',
     warning: '#F59E0B',
@@ -403,12 +430,14 @@ export function colorsToCssVariables(palette: ColorPalette): string {
   --color-accent: ${palette.accent};
   --color-accent-light: ${palette.accentLight};
   --color-neutral-900: ${palette.neutral900};
+  --color-neutral-900-rgb: ${palette.neutral900Rgb};
   --color-neutral-700: ${palette.neutral700};
   --color-neutral-500: ${palette.neutral500};
   --color-neutral-300: ${palette.neutral300};
   --color-neutral-200: ${palette.neutral200};
   --color-neutral-100: ${palette.neutral100};
   --color-neutral-50: ${palette.neutral50};
+  --color-neutral-50-rgb: ${palette.neutral50Rgb};
   --color-success: ${palette.success};
   --color-success-light: ${palette.successLight};
   --color-warning: ${palette.warning};

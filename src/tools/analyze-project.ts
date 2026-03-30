@@ -9,6 +9,7 @@
  */
 
 import type { Industry, Tone, Framework } from '../engine/types.js';
+import { classifyBusinessModel } from '../engine/business-model.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,20 @@ const PAGE_TYPE_KEYWORDS: Record<string, { sections: string[]; pages: PageDefini
         sections: ['cart-items', 'cart-summary', 'recommended'],
         isHomepage: false,
         description: 'Shopping cart with item management',
+      },
+      {
+        name: 'Checkout',
+        slug: 'checkout',
+        sections: ['checkout-form', 'order-summary'],
+        isHomepage: false,
+        description: 'Secure checkout with shipping and payment',
+      },
+      {
+        name: 'About',
+        slug: 'about',
+        sections: ['about', 'team', 'stats'],
+        isHomepage: false,
+        description: 'Company story and team',
       },
       {
         name: 'Contact',
@@ -277,36 +292,36 @@ const PAGE_TYPE_KEYWORDS: Record<string, { sections: string[]; pages: PageDefini
       },
     ],
   },
-  'restaurant': {
-    sections: ['hero', 'menu-preview', 'about', 'gallery', 'testimonials', 'reservation', 'footer'],
+  'venue': {
+    sections: ['hero', 'features', 'about', 'gallery', 'testimonials', 'cta', 'footer'],
     pages: [
       {
         name: 'Home',
         slug: 'index',
-        sections: ['hero', 'menu-preview', 'about', 'gallery', 'testimonials'],
+        sections: ['hero', 'features', 'about', 'gallery', 'testimonials'],
         isHomepage: true,
-        description: 'Restaurant landing with ambiance and menu preview',
+        description: 'Venue landing with highlights and featured offerings',
       },
       {
-        name: 'Menu',
-        slug: 'menu',
-        sections: ['menu-categories', 'menu-items', 'specials'],
+        name: 'About',
+        slug: 'about',
+        sections: ['about', 'team', 'stats'],
         isHomepage: false,
-        description: 'Full menu with categories',
+        description: 'About the venue, team, and history',
       },
       {
-        name: 'Reservation',
-        slug: 'reservation',
-        sections: ['reservation-form', 'hours', 'location'],
+        name: 'Services',
+        slug: 'services',
+        sections: ['services-grid', 'pricing', 'cta'],
         isHomepage: false,
-        description: 'Table reservation with hours and map',
+        description: 'Offerings, services, and pricing',
       },
       {
-        name: 'Gallery',
-        slug: 'gallery',
-        sections: ['photo-grid', 'lightbox'],
+        name: 'Contact',
+        slug: 'contact',
+        sections: ['contact-form', 'hours', 'location'],
         isHomepage: false,
-        description: 'Photo gallery of food and venue',
+        description: 'Booking, hours, and location',
       },
     ],
   },
@@ -330,6 +345,12 @@ const VALID_INDUSTRIES: Industry[] = [
   'luxury',
   'startup',
   'corporate',
+  'fitness',
+  'wellness',
+  'hospitality',
+  'entertainment',
+  'coaching',
+  'consulting',
 ];
 
 const INDUSTRY_KEYWORDS: Record<string, Industry> = {
@@ -347,7 +368,7 @@ const INDUSTRY_KEYWORDS: Record<string, Industry> = {
   hospital: 'healthcare',
   clinic: 'healthcare',
   dental: 'healthcare',
-  wellness: 'healthcare',
+  wellness: 'wellness',
   therapy: 'healthcare',
   saas: 'technology',
   tech: 'technology',
@@ -404,7 +425,7 @@ const INDUSTRY_KEYWORDS: Record<string, Industry> = {
   gaming: 'gaming',
   esports: 'gaming',
   game: 'gaming',
-  entertainment: 'gaming',
+  entertainment: 'entertainment',
   nonprofit: 'nonprofit',
   ngo: 'nonprofit',
   charity: 'nonprofit',
@@ -437,6 +458,37 @@ const INDUSTRY_KEYWORDS: Record<string, Industry> = {
   consulting: 'consulting',
   consultant: 'consulting',
   advisory: 'consulting',
+  // Wellness
+  salon: 'wellness',
+  spa: 'wellness',
+  barbershop: 'wellness',
+  'hair salon': 'wellness',
+  'nail salon': 'wellness',
+  massage: 'wellness',
+  medspa: 'wellness',
+  aesthetics: 'wellness',
+  // Hospitality
+  hotel: 'hospitality',
+  resort: 'hospitality',
+  hostel: 'hospitality',
+  motel: 'hospitality',
+  'bed and breakfast': 'hospitality',
+  lodge: 'hospitality',
+  inn: 'hospitality',
+  'event space': 'hospitality',
+  'wedding venue': 'hospitality',
+  // Entertainment
+  cinema: 'entertainment',
+  theater: 'entertainment',
+  museum: 'entertainment',
+  arcade: 'entertainment',
+  bowling: 'entertainment',
+  'gaming lounge': 'entertainment',
+  'play room': 'entertainment',
+  'escape room': 'entertainment',
+  ott: 'entertainment',
+  streaming: 'entertainment',
+  nightclub: 'entertainment',
 };
 
 // ─── Tone Detection ─────────────────────────────────────────────────────────
@@ -543,7 +595,7 @@ function detectPageType(text: string): string {
 
   // Scoring-based classification — highest score wins
   const scores: Record<string, number> = {
-    ecommerce: 0, portfolio: 0, blog: 0, restaurant: 0,
+    ecommerce: 0, portfolio: 0, blog: 0, venue: 0,
     dashboard: 0, saas: 0, corporate: 0, landing: 0,
   };
 
@@ -573,9 +625,19 @@ function detectPageType(text: string): string {
   // Blog
   if (lower.includes('blog') || lower.includes('article') || lower.includes('magazine') || lower.includes('publication')) scores.blog += 3;
 
-  // Restaurant
-  if (lower.includes('restaurant') || lower.includes('cafe') || lower.includes('food') || lower.includes('dining')) scores.restaurant += 3;
-  if (lower.includes('menu') || lower.includes('reservation') || lower.includes('cuisine')) scores.restaurant += 2;
+  // Venue — any physical location business (food, fitness, wellness, hospitality, entertainment)
+  if (lower.includes('restaurant') || lower.includes('cafe') || lower.includes('food') || lower.includes('dining')) scores.venue += 3;
+  if (lower.includes('bakery') || lower.includes('brewery') || lower.includes('winery') || lower.includes('bistro') || lower.includes('pizzeria')) scores.venue += 3;
+  if (lower.includes('gym') || lower.includes('fitness') || lower.includes('salon') || lower.includes('spa') || lower.includes('hotel') || lower.includes('cinema') || lower.includes('theater')) scores.venue += 3;
+  if (lower.includes('pub') || lower.includes('arcade') || lower.includes('resort') || lower.includes('barbershop') || lower.includes('yoga')) scores.venue += 3;
+  if (lower.includes('menu') || lower.includes('reservation') || lower.includes('booking') || lower.includes('visit') || lower.includes('location') || lower.includes('schedule') || lower.includes('classes') || lower.includes('cuisine')) scores.venue += 2;
+
+  // Business-model boost — uses the shared comprehensive keyword list
+  // This ensures ANY venue keyword (30+) boosts restaurant, not just the hardcoded ones above
+  const businessModel = classifyBusinessModel(lower);
+  if (businessModel === 'venue') scores.venue += 4;
+  if (businessModel === 'product') scores.ecommerce += 2;
+  if (businessModel === 'saas') scores.saas += 2;
 
   // Dashboard
   if (lower.includes('admin') || lower.includes('dashboard') || lower.includes('panel') || lower.includes('analytics')) {
@@ -694,6 +756,35 @@ function inferSectionsForPage(pageName: string, projectType: string, isHomepage:
   }
   if (lower === 'testimonials' || lower === 'reviews') {
     return ['testimonials', 'cta'];
+  }
+  if (lower === 'checkout' || lower === 'payment' || lower === 'order') {
+    return ['checkout-form', 'order-summary'];
+  }
+
+  // Fitness / Gym
+  if (lower === 'classes' || lower === 'class schedule' || lower === 'schedule' || lower === 'workouts') {
+    return ['schedule-grid', 'pricing', 'cta'];
+  }
+  if (lower === 'membership' || lower === 'memberships' || lower === 'plans') {
+    return ['pricing', 'features', 'faq', 'cta'];
+  }
+  if (lower === 'trainers' || lower === 'instructors' || lower === 'coaches') {
+    return ['team', 'testimonials'];
+  }
+
+  // Wellness / Salon / Spa
+  if (lower === 'treatments' || lower === 'treatment menu' || lower === 'services menu') {
+    return ['services-grid', 'pricing', 'testimonials'];
+  }
+
+  // Hospitality / Hotel
+  if (lower === 'rooms' || lower === 'accommodations' || lower === 'suites') {
+    return ['product-grid', 'gallery', 'pricing'];
+  }
+
+  // Entertainment / Cinema
+  if (lower === 'movies' || lower === 'showtimes' || lower === 'shows' || lower === 'screenings' || lower === 'events') {
+    return ['schedule-grid', 'features'];
   }
 
   // Fallback: generic sections

@@ -22,6 +22,9 @@ export type Industry =
   | 'startup'
   | 'corporate'
   | 'fitness'
+  | 'wellness'
+  | 'hospitality'
+  | 'entertainment'
   | 'coaching'
   | 'consulting';
 
@@ -51,12 +54,14 @@ export interface ColorPalette {
   accent: string;
   accentLight: string;
   neutral900: string;
+  neutral900Rgb: string;
   neutral700: string;
   neutral500: string;
   neutral300: string;
   neutral200: string;
   neutral100: string;
   neutral50: string;
+  neutral50Rgb: string;
   success: string;
   successLight: string;
   warning: string;
@@ -247,6 +252,8 @@ export interface DesignThemeInput {
   tone: string;
   themePreference?: ThemeMode;
   brandColor?: string;
+  /** Brand name — used to vary design tokens between projects in the same industry */
+  brandName?: string;
 }
 
 export interface DesignThemeOutput {

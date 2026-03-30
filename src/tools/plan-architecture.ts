@@ -170,6 +170,16 @@ const SECTION_COMPONENT_MAP: Record<string, { components: ComponentCategory[]; l
     layout: 'sticky sidebar with price breakdown and checkout CTA',
     animations: ['price counter animation', 'button pulse on total change'],
   },
+  'checkout-form': {
+    components: ['input', 'button-primary', 'checkbox', 'radio'],
+    layout: 'multi-step form: shipping fields, payment fields — single column with sidebar',
+    animations: ['staggered field entrance', 'step progress animation', 'input focus ring'],
+  },
+  'order-summary': {
+    components: ['card', 'button-primary', 'input'],
+    layout: 'sticky sidebar: item list, price breakdown, promo code, place-order CTA',
+    animations: ['fade-in', 'price counter animation', 'promo success animation'],
+  },
   'project-grid': {
     components: ['card', 'badge'],
     layout: 'masonry or grid: 1-2 col mobile, 3 col desktop',

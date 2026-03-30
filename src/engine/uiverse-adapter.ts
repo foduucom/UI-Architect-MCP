@@ -224,10 +224,32 @@ function sanitizeBrandedContent(html: string): string {
   }
 
   // Remove logo wrapper divs (e.g. ms-logo with child squares)
-  result = result.replace(
-    /<div\s+class=["']ms-logo["'][^>]*>[\s\S]*?<\/div>\s*(?=<div|<\/)/gi,
-    ''
-  );
+  // Balanced-brace approach: find <div class="ms-logo">, count nested divs to remove entire block
+  const msLogoPattern = /<div\s+class=["']ms-logo["'][^>]*>/gi;
+  let msMatch: RegExpExecArray | null;
+  while ((msMatch = msLogoPattern.exec(result)) !== null) {
+    let depth = 1;
+    let i = msMatch.index + msMatch[0].length;
+    while (i < result.length && depth > 0) {
+      if (result.slice(i, i + 6) === '</div>') {
+        depth--;
+        if (depth === 0) {
+          result = result.slice(0, msMatch.index) + result.slice(i + 6);
+          msLogoPattern.lastIndex = msMatch.index;
+          break;
+        }
+        i += 6;
+      } else if (/<div[\s>]/i.test(result.slice(i, i + 5))) {
+        depth++;
+        i++;
+      } else {
+        i++;
+      }
+    }
+  }
+
+  // Also remove any orphaned ms-logo-square divs that might remain
+  result = result.replace(/<div\s+class=["']ms-logo-square["'][^>]*>\s*<\/div>/gi, '');
 
   // Clean up empty button-text wrappers left behind
   result = result.replace(
@@ -246,12 +268,45 @@ function sanitizeBrandedContent(html: string): string {
 // ─── Keyframe Extraction ────────────────────────────────────────────────────
 
 function extractKeyframes(css: string): { keyframes: string; cssWithoutKeyframes: string } {
-  const keyframeRegex = /@keyframes\s+[\w-]+\s*\{[^}]*(?:\{[^}]*\}[^}]*)*\}/g;
+  // Use a balanced-brace approach to correctly extract @keyframes blocks,
+  // since @keyframes contain nested {} pairs that break simple regex matching.
   const keyframes: string[] = [];
-  const cssWithoutKeyframes = css.replace(keyframeRegex, (match) => {
-    keyframes.push(match);
-    return '';
-  });
+  let cssWithoutKeyframes = '';
+  let i = 0;
+
+  while (i < css.length) {
+    // Look for @keyframes declaration
+    const keyframeStart = css.indexOf('@keyframes', i);
+    if (keyframeStart === -1) {
+      // No more @keyframes — append the rest
+      cssWithoutKeyframes += css.slice(i);
+      break;
+    }
+
+    // Append everything before this @keyframes
+    cssWithoutKeyframes += css.slice(i, keyframeStart);
+
+    // Find the opening brace of the @keyframes block
+    const openBrace = css.indexOf('{', keyframeStart);
+    if (openBrace === -1) {
+      // Malformed — append as-is and break
+      cssWithoutKeyframes += css.slice(keyframeStart);
+      break;
+    }
+
+    // Walk forward counting braces to find the matching close
+    let depth = 1;
+    let j = openBrace + 1;
+    while (j < css.length && depth > 0) {
+      if (css[j] === '{') depth++;
+      else if (css[j] === '}') depth--;
+      j++;
+    }
+
+    // Extract the full @keyframes block
+    keyframes.push(css.slice(keyframeStart, j));
+    i = j;
+  }
 
   return {
     keyframes: keyframes.join('\n\n'),
@@ -502,11 +557,14 @@ export function instantiateButton(
     variant?: 'primary' | 'secondary';
     href?: string;
     extraClasses?: string;
+    /** When true, preserves <button type="submit"> for form submissions */
+    isSubmit?: boolean;
   }
 ): string {
   const variant = options?.variant || 'primary';
   const href = options?.href || '#';
   const extraClasses = options?.extraClasses || '';
+  const isSubmit = options?.isSubmit || false;
   const variantClass = `btn-${variant}`;
 
   const uiverseHtml = getUIverseHtml(map, 'buttons');
@@ -524,10 +582,18 @@ export function instantiateButton(
     html = addClassToRoot(html, variantClass);
     if (extraClasses) html = addClassToRoot(html, extraClasses);
 
-    // Convert <button> to <a> if href is provided (for CTA buttons)
-    if (href && href !== '#') {
+    if (isSubmit) {
+      // Form submit — ensure it's a <button type="submit">
+      if (html.match(/^<button\b/)) {
+        html = html.replace(/^<button\b/, '<button type="submit"');
+      } else if (html.match(/^<a\b/)) {
+        html = html.replace(/^<a\b[^>]*>/, `<button type="submit" class="btn ${variantClass} ${extraClasses}">`).replace(/<\/a>$/, '</button>');
+      }
+    } else if (href && href !== '#') {
+      // CTA with real link — convert to <a>
       html = html.replace(/^<button\b/, `<a href="${href}"`).replace(/<\/button>$/, '</a>');
     } else if (!html.includes('href')) {
+      // Default CTA — convert to <a> with href
       html = html.replace(/^<button\b/, `<a href="${href}"`).replace(/<\/button>$/, '</a>');
     }
 
@@ -543,13 +609,20 @@ export function instantiateButton(
     html = replaceInnerText(html, text);
     html = addClassToRoot(html, variantClass);
     if (extraClasses) html = addClassToRoot(html, extraClasses);
-    if (href && href !== '#') {
+    if (isSubmit) {
+      if (html.match(/^<button\b/)) {
+        html = html.replace(/^<button\b/, '<button type="submit"');
+      }
+    } else if (href && href !== '#') {
       html = html.replace(/^<button\b/, `<a href="${href}"`).replace(/<\/button>$/, '</a>');
     }
     return html;
   }
 
   // Last resort: primitive fallback
+  if (isSubmit) {
+    return `<button type="submit" class="btn ${variantClass} ${extraClasses}">${text}</button>`;
+  }
   return `<a href="${href}" class="btn ${variantClass} ${extraClasses}">${text}</a>`;
 }
 

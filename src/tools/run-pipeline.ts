@@ -57,6 +57,8 @@ export interface RunPipelineInput {
   brandColor?: string;
   /** Brand/company name — displayed in navigation, footer, meta tags, and content */
   brandName?: string;
+  /** Explicit page names — overrides auto-detected template pages */
+  pageNames?: string[];
   skipUIverse?: boolean;
   seoThreshold?: number;
   qaThreshold?: number;
@@ -167,6 +169,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       framework: input.framework,
       pageCount: input.pageCount,
       brandName: input.brandName,
+      pageNames: input.pageNames,
     });
   }, log);
 
@@ -200,6 +203,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       tone: scope.tone,
       themePreference: input.themePreference || 'auto',
       brandColor: input.brandColor,
+      brandName: scope.brandName,
     });
   }, log);
 
@@ -384,8 +388,13 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
             tone: scope.tone || 'professional',
           });
           contentMap[sectionType] = result.content;
-        } catch {
-          // Non-blocking — falls back to getDefaultContent
+        } catch (err) {
+          log.push({
+            step: `8b. generate_content (${sectionType})`,
+            status: 'warning',
+            duration: 0,
+            message: `Content generation failed for "${sectionType}": ${err instanceof Error ? err.message : String(err)}. Will use default content.`,
+          });
         }
       }
     }, log);
@@ -423,7 +432,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       uiverseComponents: adaptedUIverse,
       imageData: imageData.images || null,
       content: Object.keys(contentMap).length > 0 ? contentMap : null,
-      skipSharedFiles: true,
+      skipSharedFiles: false,
     });
   }, log);
 
@@ -447,6 +456,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       });
 
       // Try SEO auto-fix on existing pages before re-generating
+      let seoFixApplied = false;
       if (seoScore < seoThreshold && seoResult) {
         for (let pi = 0; pi < fullPageOutput.pages.length; pi++) {
           const page = fullPageOutput.pages[pi];
@@ -461,18 +471,22 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
               });
             }, log);
 
-            if (fixed.fixCount > 0) {
-              fullPageOutput.pages[pi] = {
-                ...page,
-                html: fixed.html,
-                css: fixed.css,
-              };
-            }
+            // Always reassign — seoFix may normalize HTML even when fixCount is 0
+            fullPageOutput.pages[pi] = {
+              ...page,
+              html: fixed.html,
+              css: fixed.css,
+            };
+            if (fixed.fixCount > 0) seoFixApplied = true;
           } catch {
             // SEO fix failed — continue with re-generation
           }
         }
-      } else {
+      }
+
+      // Only re-generate from scratch if SEO fixes weren't just applied
+      // (give the next audit cycle a chance to check if fixes improved the score)
+      if (!seoFixApplied) {
         // Re-generate pages
         fullPageOutput = timedStep(`9. generate_full_page (retry #${retryCount})`, () => {
           const builtInCss = selected.components.map(c => c.styles).join('\n\n');
@@ -488,7 +502,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
             uiverseComponents: adaptedUIverse,
             imageData: imageData.images || null,
             content: Object.keys(contentMap).length > 0 ? contentMap : null,
-            skipSharedFiles: true,
+            skipSharedFiles: false,
           });
         }, log);
       }
@@ -699,6 +713,17 @@ export async function runPipeline(input: RunPipelineInput): Promise<RunPipelineO
       const filePath = path.join(outDir, file.path);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, file.content, 'utf-8');
+    }
+
+    // Write shared files from generate_full_page (components.css with navbar/footer/button CSS)
+    // These overwrite scaffold's bare versions with the full component styles
+    if (fullPageOutput.sharedFiles) {
+      for (const file of fullPageOutput.sharedFiles) {
+        const cssDir = framework === 'html' ? 'assets/css' : 'css';
+        const filePath = path.join(outDir, cssDir, file.filename);
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, file.content, 'utf-8');
+      }
     }
 
     // Write page HTML files

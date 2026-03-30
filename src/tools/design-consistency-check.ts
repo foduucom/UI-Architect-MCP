@@ -105,6 +105,9 @@ function extractElement(html: string, selectors: string[]): string {
 /**
  * Extract DOM structure as simplified tree (tag names + key classes)
  */
+/** Classes that vary per page and should be stripped before structural comparison */
+const PAGE_SPECIFIC_CLASSES = ['active', 'current', 'is-active', 'selected', 'current-page', 'active-link'];
+
 function extractDomStructure(element: string): string {
   if (!element) return 'NOT_FOUND';
 
@@ -114,9 +117,14 @@ function extractDomStructure(element: string): string {
   return tags
     .map((tag) => {
       const tagName = tag.match(/<(\w+)/)?.[1] || 'unknown';
-      const classes = tag.match(/class="([^"]+)"/)?.[1] || '';
+      const rawClasses = tag.match(/class="([^"]+)"/)?.[1] || '';
       const id = tag.match(/id="([^"]+)"/)?.[1] || '';
-      return `<${tagName}${id ? `#${id}` : ''}${classes ? `.${classes.split(' ').join('.')}` : ''}`;
+      // Strip page-specific classes that legitimately differ between pages
+      const classes = rawClasses
+        .split(' ')
+        .filter(c => !PAGE_SPECIFIC_CLASSES.includes(c))
+        .join('.');
+      return `<${tagName}${id ? `#${id}` : ''}${classes ? `.${classes}` : ''}`;
     })
     .join(' > ');
 }
@@ -192,6 +200,9 @@ function extractHardcodedColors(css: string): Map<string, string[]> {
   while ((match = ruleRegex.exec(css)) !== null) {
     const selector = match[1].trim().toLowerCase();
     const declarationBlock = match[2];
+
+    // Skip CSS variable declarations — colors in :root are design tokens, not hardcoded
+    if (selector.includes(':root') || selector.includes('[data-theme') || selector.includes('--')) continue;
 
     const colors: string[] = [];
     let colorMatch;
@@ -840,7 +851,7 @@ export function designConsistencyCheck(input: DesignConsistencyInput): DesignCon
 
     const score = Math.max(
       0,
-      100 - errorCount * 20 - warningCount * 8 - infoCount * 2
+      100 - errorCount * 10 - warningCount * 4 - infoCount * 1
     );
 
     return {
@@ -855,7 +866,8 @@ export function designConsistencyCheck(input: DesignConsistencyInput): DesignCon
   // Calculate overall score
   const avgScore = pageReports.reduce((sum, r) => sum + r.consistencyScore, 0) / pages.length;
   const errorCount = deduplicatedIssues.filter((i) => i.severity === 'error').length;
-  const finalScore = Math.round(Math.max(0, avgScore - errorCount * 5));
+  // No double-penalty — per-page scores already account for errors
+  const finalScore = Math.round(avgScore);
 
   const passed = finalScore >= 80 && errorCount === 0;
 

@@ -13,13 +13,13 @@ import type {
   DesignTokens,
   ComponentCategory,
   AdaptedComponent,
-} from '../engine/types.js';
+} from "../engine/types.js";
 import {
   resolveIconForKeyword,
   getIndustryIcons,
   resolvePicsumUrl,
-} from './fetch-images.js';
-import type { UIverseComponentMap } from '../engine/uiverse-adapter.js';
+} from "./fetch-images.js";
+import type { UIverseComponentMap } from "../engine/uiverse-adapter.js";
 import {
   getUIverseCss,
   getUIverseHtml,
@@ -27,10 +27,12 @@ import {
   instantiateButton,
   instantiateCard,
   instantiateInput,
-} from '../engine/uiverse-adapter.js';
-import { generateContent } from './generate-content.js';
-import { resolveBrandName } from './generate-full-page.js';
-import type { ResolvedImage } from './fetch-images.js';
+} from "../engine/uiverse-adapter.js";
+import { generateContent } from "./generate-content.js";
+import { resolveBrandName } from "./generate-full-page.js";
+import type { ResolvedImage } from "./fetch-images.js";
+import { classifySection } from "../engine/section-classifier.js";
+import { classifyBusinessModel } from "../engine/business-model.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +51,10 @@ export interface GenerateSectionInput {
   /** Adapted UIverse components — when provided, these replace built-in component CSS */
   uiverseComponents?: UIverseComponentMap | null;
   /** Resolved images per section type from fetchImages */
-  imageData?: Record<string, import('./fetch-images.js').ResolvedImage[]> | null;
+  imageData?: Record<
+    string,
+    import("./fetch-images.js").ResolvedImage[]
+  > | null;
   /** Page definitions for multi-page navigation context */
   pages?: PageInfo[] | null;
   /** Current page slug for active-state highlighting */
@@ -58,6 +63,8 @@ export interface GenerateSectionInput {
   brandName?: string | null;
   /** Skip per-section UIverse CSS injection — generate_full_page handles it at page level */
   skipUIverseInjection?: boolean;
+  /** Variation index for content rotation — prevents repeated content across pages */
+  variationIndex?: number;
 }
 
 export interface SectionContent {
@@ -91,570 +98,992 @@ export interface GenerateSectionOutput {
 // ─── Section Component Requirements ─────────────────────────────────────────
 
 const SECTION_REQUIREMENTS: Record<string, ComponentCategory[]> = {
-  'hero': ['button-primary', 'button-secondary'],
-  'features': ['card'],
-  'pricing': ['card', 'button-primary', 'button-secondary', 'badge'],
-  'testimonials': ['card'],
-  'cta': ['button-primary', 'button-secondary'],
-  'faq': [],
-  'contact-form': ['input', 'button-primary', 'checkbox'],
-  'newsletter': ['input', 'button-primary'],
-  'footer': [],
-  'navigation': ['navigation'],
-  'navbar': ['navigation'],
-  'product-grid': ['card', 'badge', 'button-primary'],
-  'featured-products': ['card', 'badge'],
-  'team': ['card'],
-  'about': [],
-  'stats': ['card'],
-  'stats-cards': ['card'],
-  'services': ['card'],
-  'services-grid': ['card'],
-  'clients': [],
-  'how-it-works': ['card'],
-  'gallery': [],
-  'menu-preview': ['card', 'button-primary'],
-  'menu-items': ['card', 'button-primary', 'button-secondary'],
-  'menu-categories': ['card', 'button-primary', 'button-secondary'],
-  'specials': ['card', 'badge'],
-  'reservation-form': ['input', 'button-primary'],
-  'blog-grid': ['card', 'badge'],
-  'post-grid': ['card', 'badge'],
-  'featured-posts': ['card', 'badge'],
-  'sidebar': ['input'],
-  'skills': ['badge'],
-  'project-grid': ['card', 'badge'],
-  'featured-projects': ['card'],
-  'categories': ['card'],
-  'map': ['button-primary'],
-  'info': [],
+  hero: ["button-primary", "button-secondary"],
+  features: ["card"],
+  pricing: ["card", "button-primary", "button-secondary", "badge"],
+  testimonials: ["card"],
+  cta: ["button-primary", "button-secondary"],
+  faq: [],
+  "contact-form": ["input", "button-primary", "checkbox"],
+  newsletter: ["input", "button-primary"],
+  footer: [],
+  navigation: ["navigation"],
+  navbar: ["navigation"],
+  "product-grid": ["card", "badge", "button-primary"],
+  "featured-products": ["card", "badge"],
+  team: ["card"],
+  about: [],
+  stats: ["card"],
+  "stats-cards": ["card"],
+  services: ["card"],
+  "services-grid": ["card"],
+  clients: [],
+  "how-it-works": ["card"],
+  gallery: [],
+  "menu-preview": ["card", "button-primary"],
+  "menu-items": ["card", "button-primary", "button-secondary"],
+  "menu-categories": ["card", "button-primary", "button-secondary"],
+  specials: ["card", "badge"],
+  "reservation-form": ["input", "button-primary"],
+  "blog-grid": ["card", "badge"],
+  "post-grid": ["card", "badge"],
+  "featured-posts": ["card", "badge"],
+  sidebar: ["input"],
+  skills: ["badge"],
+  "project-grid": ["card", "badge"],
+  "featured-projects": ["card"],
+  categories: ["card"],
+  map: ["button-primary"],
+  info: [],
 };
 
 // ─── Default Content ────────────────────────────────────────────────────────
 
 // Industry-specific hero content so we don't show generic SaaS copy for restaurants
-const INDUSTRY_HERO: Record<string, { headline: string; subheadline: string; ctaText: string; ctaSecondaryText: string }> = {
+const INDUSTRY_HERO: Record<
+  string,
+  {
+    headline: string;
+    subheadline: string;
+    ctaText: string;
+    ctaSecondaryText: string;
+  }
+> = {
   restaurant: {
-    headline: 'An Unforgettable Dining Experience',
-    subheadline: 'Where culinary artistry meets timeless elegance. Discover hand-crafted dishes made from the finest seasonal ingredients.',
-    ctaText: 'Book a Table',
-    ctaSecondaryText: 'View Menu',
+    headline: "An Unforgettable Dining Experience",
+    subheadline:
+      "Where culinary artistry meets timeless elegance. Discover hand-crafted dishes made from the finest seasonal ingredients.",
+    ctaText: "Book a Table",
+    ctaSecondaryText: "View Menu",
   },
   food: {
-    headline: 'Savor Every Moment',
-    subheadline: 'Fresh, locally sourced ingredients transformed into extraordinary dishes. A feast for all your senses.',
-    ctaText: 'Order Now',
-    ctaSecondaryText: 'Our Menu',
+    headline: "Savor Every Moment",
+    subheadline:
+      "Fresh, locally sourced ingredients transformed into extraordinary dishes. A feast for all your senses.",
+    ctaText: "Order Now",
+    ctaSecondaryText: "Our Menu",
   },
   luxury: {
-    headline: 'Experience True Elegance',
-    subheadline: 'Meticulously crafted for those who appreciate the finest things in life. Where every detail matters.',
-    ctaText: 'Explore',
-    ctaSecondaryText: 'Learn More',
+    headline: "Experience True Elegance",
+    subheadline:
+      "Meticulously crafted for those who appreciate the finest things in life. Where every detail matters.",
+    ctaText: "Explore",
+    ctaSecondaryText: "Learn More",
   },
   healthcare: {
-    headline: 'Your Health, Our Priority',
-    subheadline: 'Compassionate care backed by cutting-edge technology. Trusted by thousands of patients and families.',
-    ctaText: 'Book Appointment',
-    ctaSecondaryText: 'Our Services',
+    headline: "Your Health, Our Priority",
+    subheadline:
+      "Compassionate care backed by cutting-edge technology. Trusted by thousands of patients and families.",
+    ctaText: "Book Appointment",
+    ctaSecondaryText: "Our Services",
   },
   ecommerce: {
-    headline: 'Discover What You Love',
-    subheadline: 'Curated collections, exceptional quality, and free shipping on every order. Shop with confidence.',
-    ctaText: 'Shop Now',
-    ctaSecondaryText: 'New Arrivals',
+    headline: "Discover What You Love",
+    subheadline:
+      "Curated collections, exceptional quality, and free shipping on every order. Shop with confidence.",
+    ctaText: "Shop Now",
+    ctaSecondaryText: "New Arrivals",
   },
   education: {
-    headline: 'Learn Without Limits',
-    subheadline: 'Expert-led courses designed to help you grow. Start your journey today with world-class instruction.',
-    ctaText: 'Get Started',
-    ctaSecondaryText: 'Browse Courses',
+    headline: "Learn Without Limits",
+    subheadline:
+      "Expert-led courses designed to help you grow. Start your journey today with world-class instruction.",
+    ctaText: "Get Started",
+    ctaSecondaryText: "Browse Courses",
   },
   realestate: {
-    headline: 'Find Your Perfect Home',
-    subheadline: 'Premium properties in the most desirable locations. Let us help you discover where you belong.',
-    ctaText: 'View Listings',
-    ctaSecondaryText: 'Contact Agent',
+    headline: "Find Your Perfect Home",
+    subheadline:
+      "Premium properties in the most desirable locations. Let us help you discover where you belong.",
+    ctaText: "View Listings",
+    ctaSecondaryText: "Contact Agent",
   },
   corporate: {
-    headline: 'Solutions That Drive Results',
-    subheadline: 'Enterprise-grade tools built for modern teams. Streamline operations and accelerate growth.',
-    ctaText: 'Get Started',
-    ctaSecondaryText: 'Learn More',
+    headline: "Solutions That Drive Results",
+    subheadline:
+      "Enterprise-grade tools built for modern teams. Streamline operations and accelerate growth.",
+    ctaText: "Get Started",
+    ctaSecondaryText: "Learn More",
   },
 };
 
-function getDefaultContent(sectionType: string, industry: string): SectionContent {
+function getDefaultContent(
+  sectionType: string,
+  industry: string,
+  variationIndex?: number,
+): SectionContent {
   const industryName = industry.charAt(0).toUpperCase() + industry.slice(1);
   const heroOverride = INDUSTRY_HERO[industry.toLowerCase()];
 
+  // For venue industries not in INDUSTRY_HERO, use generateContent() which has
+  // comprehensive venue-subtype-aware templates (fitness/wellness/hospitality/entertainment)
+  const businessModel = classifyBusinessModel(industry);
+  if (businessModel === 'venue' && !heroOverride) {
+    try {
+      const result = generateContent({
+        sectionType,
+        industry,
+        brandName: industryName,
+        tone: 'professional',
+        itemCount: 6,
+      });
+      const gc = result.content;
+      if (gc) {
+        return {
+          headline: gc.headline,
+          subheadline: gc.subheadline,
+          description: gc.bodyText,
+          ctaText: gc.ctaText,
+          ctaSecondaryText: gc.ctaSecondary,
+          items: gc.items?.map((item: Record<string, string>) => ({
+            title: item.title,
+            description: item.description,
+            icon: item.icon,
+            price: item.price,
+          })),
+        };
+      }
+    } catch {
+      // Fall through to generic defaults below
+    }
+  }
+
   const defaults: Record<string, SectionContent> = {
-    'hero': heroOverride ? {
-      headline: heroOverride.headline,
-      subheadline: heroOverride.subheadline,
-      ctaText: heroOverride.ctaText,
-      ctaSecondaryText: heroOverride.ctaSecondaryText,
-    } : {
-      headline: `Transform Your ${industryName} Business`,
-      subheadline:
-        'Build something extraordinary with tools designed for modern teams. Ship faster, scale smarter, grow bigger.',
-      ctaText: 'Get Started',
-      ctaSecondaryText: 'Learn More',
-    },
-    'features': (() => {
+    hero: heroOverride
+      ? {
+          headline: heroOverride.headline,
+          subheadline: heroOverride.subheadline,
+          ctaText: heroOverride.ctaText,
+          ctaSecondaryText: heroOverride.ctaSecondaryText,
+        }
+      : {
+          headline: `Transform Your ${industryName} Business`,
+          subheadline:
+            "Build something extraordinary with tools designed for modern teams. Ship faster, scale smarter, grow bigger.",
+          ctaText: "Get Started",
+          ctaSecondaryText: "Learn More",
+        },
+    features: (() => {
       const icons = getIndustryIcons(industry, 6);
       return {
         headline: `Why ${industryName} Teams Choose Us`,
-        subheadline: 'Powerful features designed to help you succeed.',
+        subheadline: "Powerful features designed to help you succeed.",
         items: [
           {
-            title: 'Premium Quality',
-            description: 'Every product and service meets the highest standards. Quality you can see and feel.',
+            title: "Premium Quality",
+            description:
+              "Every product and service meets the highest standards. Quality you can see and feel.",
             icon: icons[0],
           },
           {
-            title: 'Trusted & Secure',
-            description: 'Your trust is our priority. We protect your information and stand behind everything we offer.',
+            title: "Trusted & Secure",
+            description:
+              "Your trust is our priority. We protect your information and stand behind everything we offer.",
             icon: icons[1],
           },
           {
-            title: 'Seamless Experience',
-            description: 'Designed to be intuitive and effortless. Get started quickly with zero friction.',
+            title: "Seamless Experience",
+            description:
+              "Designed to be intuitive and effortless. Get started quickly with zero friction.",
             icon: icons[2],
           },
           {
-            title: 'Transparent Pricing',
-            description: 'No hidden fees, no surprises. What you see is exactly what you get.',
+            title: "Transparent Pricing",
+            description:
+              "No hidden fees, no surprises. What you see is exactly what you get.",
             icon: icons[3],
           },
           {
-            title: 'Dedicated Support',
-            description: 'Our team is always available to help. Reach us by chat, email, or phone anytime.',
+            title: "Dedicated Support",
+            description:
+              "Our team is always available to help. Reach us by chat, email, or phone anytime.",
             icon: icons[4],
           },
           {
-            title: 'Built to Grow',
-            description: 'Whether you are just starting out or scaling up, we grow with you every step of the way.',
+            title: "Built to Grow",
+            description:
+              "Whether you are just starting out or scaling up, we grow with you every step of the way.",
             icon: icons[5],
           },
         ],
       };
     })(),
-    'pricing': {
-      headline: 'Simple, Transparent Pricing',
-      subheadline: 'Choose the plan that fits your needs. No hidden fees.',
+    pricing: {
+      headline: "Simple, Transparent Pricing",
+      subheadline: "Choose the plan that fits your needs. No hidden fees.",
       items: [
         {
-          title: 'Starter',
-          description: 'Perfect for individuals and small projects',
-          price: '$9/mo',
-          badge: '',
-          link: '#',
+          title: "Starter",
+          description: "Perfect for individuals and small projects",
+          price: "$9/mo",
+          badge: "",
+          link: "#",
         },
         {
-          title: 'Professional',
-          description: 'Best for growing teams and businesses',
-          price: '$29/mo',
-          badge: 'Most Popular',
-          link: '#',
+          title: "Professional",
+          description: "Best for growing teams and businesses",
+          price: "$29/mo",
+          badge: "Most Popular",
+          link: "#",
         },
         {
-          title: 'Enterprise',
-          description: 'For large organizations with advanced needs',
-          price: '$99/mo',
-          badge: '',
-          link: '#',
+          title: "Enterprise",
+          description: "For large organizations with advanced needs",
+          price: "$99/mo",
+          badge: "",
+          link: "#",
         },
       ],
-      ctaText: 'Start Free Trial',
+      ctaText: "Start Free Trial",
     },
-    'testimonials': {
-      headline: 'Trusted by Industry Leaders',
-      subheadline: 'See what our customers have to say.',
+    testimonials: {
+      headline: "Trusted by Industry Leaders",
+      subheadline: "See what our customers have to say.",
       items: [
         {
-          title: 'Sarah Chen',
+          title: "Sarah Chen",
           description:
             '"This completely transformed how we work. The ROI was visible within the first month."',
-          badge: 'CEO, TechCorp',
+          badge: "CEO, TechCorp",
         },
         {
-          title: 'Marcus Johnson',
+          title: "Marcus Johnson",
           description:
             '"Best investment we made this year. The team loves it and productivity is through the roof."',
-          badge: 'CTO, StartupXYZ',
+          badge: "CTO, StartupXYZ",
         },
         {
-          title: 'Elena Rodriguez',
+          title: "Elena Rodriguez",
           description:
             '"Finally, a solution that actually delivers on its promises. Exceptional quality and support."',
-          badge: 'VP Product, ScaleUp Inc',
+          badge: "VP Product, ScaleUp Inc",
         },
       ],
     },
-    'cta': {
-      headline: 'Ready to Get Started?',
-      subheadline: 'Join thousands of companies already using our platform.',
-      ctaText: 'Start Free Trial',
-      ctaSecondaryText: 'Schedule a Demo',
+    cta: {
+      headline: "Ready to Get Started?",
+      subheadline: "Join thousands of companies already using our platform.",
+      ctaText: "Start Free Trial",
+      ctaSecondaryText: "Schedule a Demo",
     },
-    'faq': {
-      headline: 'Frequently Asked Questions',
-      subheadline: 'Everything you need to know.',
+    faq: {
+      headline: "Frequently Asked Questions",
+      subheadline: "Everything you need to know.",
       items: [
         {
-          title: 'How do I get started?',
+          title: "How do I get started?",
           description:
-            'Sign up for a free account, complete the onboarding wizard, and you\'re ready to go. No credit card required.',
+            "Sign up for a free account, complete the onboarding wizard, and you're ready to go. No credit card required.",
         },
         {
-          title: 'Can I cancel anytime?',
+          title: "Can I cancel anytime?",
           description:
-            'Absolutely. You can cancel your subscription at any time with no cancellation fees. Your data remains accessible for 30 days after cancellation.',
+            "Absolutely. You can cancel your subscription at any time with no cancellation fees. Your data remains accessible for 30 days after cancellation.",
         },
         {
-          title: 'Do you offer team plans?',
+          title: "Do you offer team plans?",
           description:
-            'Yes! Our Professional and Enterprise plans support unlimited team members with role-based access control.',
+            "Yes! Our Professional and Enterprise plans support unlimited team members with role-based access control.",
         },
         {
-          title: 'Is my data secure?',
+          title: "Is my data secure?",
           description:
-            'We use bank-level encryption (AES-256) and are SOC 2 Type II certified. Your data is always encrypted at rest and in transit.',
+            "We use bank-level encryption (AES-256) and are SOC 2 Type II certified. Your data is always encrypted at rest and in transit.",
         },
         {
-          title: 'What integrations do you support?',
+          title: "What integrations do you support?",
           description:
-            'We integrate with 100+ tools including Slack, Jira, GitHub, Salesforce, HubSpot, and more. Custom integrations are available on Enterprise plans.',
+            "We integrate with 100+ tools including Slack, Jira, GitHub, Salesforce, HubSpot, and more. Custom integrations are available on Enterprise plans.",
         },
       ],
     },
-    'contact-form': {
-      headline: 'Get In Touch',
-      subheadline: 'Have a question? We\'d love to hear from you.',
-      ctaText: 'Send Message',
+    "contact-form": {
+      headline: "Get In Touch",
+      subheadline: "Have a question? We'd love to hear from you.",
+      ctaText: "Send Message",
     },
-    'newsletter': {
-      headline: 'Stay Updated',
-      subheadline: 'Get the latest news and updates delivered to your inbox.',
-      ctaText: 'Subscribe',
+    newsletter: {
+      headline: "Stay Updated",
+      subheadline: "Get the latest news and updates delivered to your inbox.",
+      ctaText: "Subscribe",
     },
-    'footer': {
-      headline: 'Company Name',
-      description: 'Building the future, one product at a time.',
+    footer: {
+      headline: "Company Name",
+      description: "Building the future, one product at a time.",
     },
-    'team': {
-      headline: 'Meet Our Team',
-      subheadline: 'The people behind the product.',
+    team: {
+      headline: "Meet Our Team",
+      subheadline: "The people behind the product.",
       items: [
-        { title: 'Alex Thompson', description: 'Founder & CEO', image: resolvePicsumUrl(400, 400, 101), badge: '' },
-        { title: 'Maya Patel', description: 'Head of Design', image: resolvePicsumUrl(400, 400, 102), badge: '' },
-        { title: 'James Wilson', description: 'Lead Engineer', image: resolvePicsumUrl(400, 400, 103), badge: '' },
-        { title: 'Sofia Garcia', description: 'Head of Growth', image: resolvePicsumUrl(400, 400, 104), badge: '' },
+        {
+          title: "Alex Thompson",
+          description: "Founder & CEO",
+          image: resolvePicsumUrl(400, 400, 101),
+          badge: "",
+        },
+        {
+          title: "Maya Patel",
+          description: "Head of Design",
+          image: resolvePicsumUrl(400, 400, 102),
+          badge: "",
+        },
+        {
+          title: "James Wilson",
+          description: "Lead Engineer",
+          image: resolvePicsumUrl(400, 400, 103),
+          badge: "",
+        },
+        {
+          title: "Sofia Garcia",
+          description: "Head of Growth",
+          image: resolvePicsumUrl(400, 400, 104),
+          badge: "",
+        },
       ],
     },
-    'about': {
-      headline: 'About Us',
+    about: {
+      headline: "About Us",
       description:
-        'We\'re a team of passionate builders dedicated to creating tools that make a difference. Founded in 2020, we\'ve grown from a small startup to serving thousands of customers worldwide.',
+        "We're a team of passionate builders dedicated to creating tools that make a difference. Founded in 2020, we've grown from a small startup to serving thousands of customers worldwide.",
     },
-    'stats': {
-      headline: 'By the Numbers',
+    stats: {
+      headline: "By the Numbers",
       items: [
-        { title: '10K+', description: 'Active Users' },
-        { title: '99.9%', description: 'Uptime' },
-        { title: '50+', description: 'Countries' },
-        { title: '4.9/5', description: 'Rating' },
+        { title: "10K+", description: "Active Users" },
+        { title: "99.9%", description: "Uptime" },
+        { title: "50+", description: "Countries" },
+        { title: "4.9/5", description: "Rating" },
       ],
     },
-    'stats-cards': {
-      headline: 'By the Numbers',
+    "stats-cards": {
+      headline: "By the Numbers",
       items: [
-        { title: '10K+', description: 'Active Users' },
-        { title: '99.9%', description: 'Uptime' },
-        { title: '50+', description: 'Countries' },
-        { title: '4.9/5', description: 'Rating' },
+        { title: "10K+", description: "Active Users" },
+        { title: "99.9%", description: "Uptime" },
+        { title: "50+", description: "Countries" },
+        { title: "4.9/5", description: "Rating" },
       ],
     },
-    'services': {
-      headline: 'Our Services',
-      subheadline: 'Comprehensive solutions for your business.',
+    services: {
+      headline: "Our Services",
+      subheadline: "Comprehensive solutions for your business.",
       items: [
         {
-          title: 'Web Development',
-          description: 'Custom websites and web applications built with modern technologies.',
-          icon: resolveIconForKeyword('web'),
-        },
-        {
-          title: 'Mobile Apps',
-          description: 'Native and cross-platform mobile applications for iOS and Android.',
-          icon: resolveIconForKeyword('mobile'),
-        },
-        {
-          title: 'UI/UX Design',
-          description: 'Beautiful, intuitive designs that delight users and drive conversions.',
-          icon: resolveIconForKeyword('design'),
-        },
-      ],
-    },
-    'services-grid': {
-      headline: 'What We Offer',
-      subheadline: 'End-to-end solutions tailored to your needs.',
-      items: [
-        { title: 'Strategy', description: 'Data-driven strategies that deliver measurable results.', icon: resolveIconForKeyword('analytics') },
-        { title: 'Design', description: 'Award-winning designs that captivate your audience.', icon: resolveIconForKeyword('design') },
-        { title: 'Development', description: 'Robust, scalable solutions built with best practices.', icon: resolveIconForKeyword('code') },
-        { title: 'Support', description: 'Ongoing maintenance and support to keep you running.', icon: resolveIconForKeyword('security') },
-      ],
-    },
-    'how-it-works': {
-      headline: 'How It Works',
-      subheadline: 'Get started in three simple steps.',
-      items: [
-        {
-          title: 'Sign Up',
-          description: 'Create your free account in under 60 seconds. No credit card required.',
-          icon: resolveIconForKeyword('sign up'),
-        },
-        {
-          title: 'Configure',
+          title: "Web Development",
           description:
-            'Set up your workspace and invite your team. Our wizard guides you through everything.',
-          icon: resolveIconForKeyword('settings'),
+            "Custom websites and web applications built with modern technologies.",
+          icon: resolveIconForKeyword("web"),
         },
         {
-          title: 'Launch',
+          title: "Mobile Apps",
           description:
-            'Go live and start seeing results immediately. We\'re here to help every step of the way.',
-          icon: resolveIconForKeyword('launch'),
+            "Native and cross-platform mobile applications for iOS and Android.",
+          icon: resolveIconForKeyword("mobile"),
+        },
+        {
+          title: "UI/UX Design",
+          description:
+            "Beautiful, intuitive designs that delight users and drive conversions.",
+          icon: resolveIconForKeyword("design"),
         },
       ],
     },
-    'clients': {
-      headline: 'Trusted By',
+    "services-grid": {
+      headline: "What We Offer",
+      subheadline: "End-to-end solutions tailored to your needs.",
       items: [
-        { title: 'Company A', description: '' },
-        { title: 'Company B', description: '' },
-        { title: 'Company C', description: '' },
-        { title: 'Company D', description: '' },
-        { title: 'Company E', description: '' },
-        { title: 'Company F', description: '' },
+        {
+          title: "Strategy",
+          description:
+            "Data-driven strategies that deliver measurable results.",
+          icon: resolveIconForKeyword("analytics"),
+        },
+        {
+          title: "Design",
+          description: "Award-winning designs that captivate your audience.",
+          icon: resolveIconForKeyword("design"),
+        },
+        {
+          title: "Development",
+          description: "Robust, scalable solutions built with best practices.",
+          icon: resolveIconForKeyword("code"),
+        },
+        {
+          title: "Support",
+          description: "Ongoing maintenance and support to keep you running.",
+          icon: resolveIconForKeyword("security"),
+        },
+      ],
+    },
+    "how-it-works": {
+      headline: "How It Works",
+      subheadline: "Get started in three simple steps.",
+      items: [
+        {
+          title: "Sign Up",
+          description:
+            "Create your free account in under 60 seconds. No credit card required.",
+          icon: resolveIconForKeyword("sign up"),
+        },
+        {
+          title: "Configure",
+          description:
+            "Set up your workspace and invite your team. Our wizard guides you through everything.",
+          icon: resolveIconForKeyword("settings"),
+        },
+        {
+          title: "Launch",
+          description:
+            "Go live and start seeing results immediately. We're here to help every step of the way.",
+          icon: resolveIconForKeyword("launch"),
+        },
+      ],
+    },
+    clients: {
+      headline: "Trusted By",
+      items: [
+        { title: "Company A", description: "" },
+        { title: "Company B", description: "" },
+        { title: "Company C", description: "" },
+        { title: "Company D", description: "" },
+        { title: "Company E", description: "" },
+        { title: "Company F", description: "" },
       ],
     },
     // ─── Restaurant / Food Sections ──────────────────────────────────────
-    'menu-preview': {
-      headline: 'Our Signature Dishes',
-      subheadline: 'Hand-crafted masterpieces from our kitchen.',
+    "menu-preview": {
+      headline: "Our Featured Offerings",
+      subheadline: "Hand-crafted masterpieces from our kitchen.",
       items: [
-        { title: 'Grilled Ribeye Steak', description: 'Prime cut with herb butter, roasted garlic mash, and seasonal vegetables.', price: '$48', image: resolvePicsumUrl(600, 400, 301) },
-        { title: 'Pan-Seared Salmon', description: 'Atlantic salmon with lemon dill sauce, wild rice, and grilled asparagus.', price: '$36', image: resolvePicsumUrl(600, 400, 302) },
-        { title: 'Truffle Pappardelle', description: 'Fresh pappardelle with wild mushroom ragu, black truffle, and aged parmesan.', price: '$32', image: resolvePicsumUrl(600, 400, 303) },
-        { title: 'Dark Chocolate Soufflé', description: 'Warm Valrhona chocolate soufflé with vanilla bean crème anglaise.', price: '$18', image: resolvePicsumUrl(600, 400, 304) },
+        {
+          title: "Grilled Ribeye Steak",
+          description:
+            "Prime cut with herb butter, roasted garlic mash, and seasonal vegetables.",
+          price: "$48",
+          image: resolvePicsumUrl(600, 400, 301),
+        },
+        {
+          title: "Pan-Seared Salmon",
+          description:
+            "Atlantic salmon with lemon dill sauce, wild rice, and grilled asparagus.",
+          price: "$36",
+          image: resolvePicsumUrl(600, 400, 302),
+        },
+        {
+          title: "Truffle Pappardelle",
+          description:
+            "Fresh pappardelle with wild mushroom ragu, black truffle, and aged parmesan.",
+          price: "$32",
+          image: resolvePicsumUrl(600, 400, 303),
+        },
+        {
+          title: "Dark Chocolate Soufflé",
+          description:
+            "Warm Valrhona chocolate soufflé with vanilla bean crème anglaise.",
+          price: "$18",
+          image: resolvePicsumUrl(600, 400, 304),
+        },
       ],
-      ctaText: 'View Full Menu',
+      ctaText: "View Full Menu",
     },
-    'menu-items': {
-      headline: 'Our Menu',
-      subheadline: 'Explore our carefully curated selection of dishes.',
+    "menu-items": {
+      headline: "Our Offerings",
+      subheadline: "Explore our carefully curated selection.",
       items: [
-        { title: 'Truffle Bruschetta', description: 'Grilled sourdough, whipped ricotta, black truffle, honey drizzle.', price: '$16', badge: 'starters' },
-        { title: 'Tuna Tartare', description: 'Yellowfin tuna, avocado, sesame, crispy wonton, ponzu.', price: '$22', badge: 'starters' },
-        { title: 'Lobster Bisque', description: 'Creamy lobster bisque, cognac cream, chive oil, brioche croutons.', price: '$18', badge: 'starters' },
-        { title: 'Prime Ribeye', description: '28-day dry-aged prime ribeye, bone marrow butter, truffle fries.', price: '$58', badge: 'mains' },
-        { title: 'Chilean Sea Bass', description: 'Miso-glazed sea bass, bok choy, ginger-scallion broth.', price: '$48', badge: 'mains' },
-        { title: 'Duck Confit', description: 'Crispy duck leg, cherry gastrique, whipped sweet potato, arugula.', price: '$42', badge: 'mains' },
-        { title: 'Rack of Lamb', description: 'Herb-crusted New Zealand lamb, rosemary jus, root vegetables.', price: '$52', badge: 'mains' },
-        { title: 'Crème Brûlée', description: 'Classic vanilla bean crème brûlée with caramelized sugar crust.', price: '$16', badge: 'desserts' },
-        { title: 'Tiramisu', description: 'Espresso-soaked ladyfingers, mascarpone, cocoa, amaretto.', price: '$18', badge: 'desserts' },
-        { title: 'Molten Lava Cake', description: 'Warm chocolate fondant, raspberry coulis, vanilla gelato.', price: '$20', badge: 'desserts' },
-        { title: 'Reserve Cabernet', description: 'Napa Valley reserve cabernet sauvignon, full-bodied, oak-aged.', price: '$24', badge: 'drinks' },
-        { title: 'Smoky Old Fashioned', description: 'Smoked bourbon, demerara, angostura, flamed orange peel.', price: '$18', badge: 'drinks' },
+        {
+          title: "Truffle Bruschetta",
+          description:
+            "Grilled sourdough, whipped ricotta, black truffle, honey drizzle.",
+          price: "$16",
+          badge: "starters",
+        },
+        {
+          title: "Tuna Tartare",
+          description: "Yellowfin tuna, avocado, sesame, crispy wonton, ponzu.",
+          price: "$22",
+          badge: "starters",
+        },
+        {
+          title: "Lobster Bisque",
+          description:
+            "Creamy lobster bisque, cognac cream, chive oil, brioche croutons.",
+          price: "$18",
+          badge: "starters",
+        },
+        {
+          title: "Prime Ribeye",
+          description:
+            "28-day dry-aged prime ribeye, bone marrow butter, truffle fries.",
+          price: "$58",
+          badge: "mains",
+        },
+        {
+          title: "Chilean Sea Bass",
+          description: "Miso-glazed sea bass, bok choy, ginger-scallion broth.",
+          price: "$48",
+          badge: "mains",
+        },
+        {
+          title: "Duck Confit",
+          description:
+            "Crispy duck leg, cherry gastrique, whipped sweet potato, arugula.",
+          price: "$42",
+          badge: "mains",
+        },
+        {
+          title: "Rack of Lamb",
+          description:
+            "Herb-crusted New Zealand lamb, rosemary jus, root vegetables.",
+          price: "$52",
+          badge: "mains",
+        },
+        {
+          title: "Crème Brûlée",
+          description:
+            "Classic vanilla bean crème brûlée with caramelized sugar crust.",
+          price: "$16",
+          badge: "desserts",
+        },
+        {
+          title: "Tiramisu",
+          description:
+            "Espresso-soaked ladyfingers, mascarpone, cocoa, amaretto.",
+          price: "$18",
+          badge: "desserts",
+        },
+        {
+          title: "Molten Lava Cake",
+          description:
+            "Warm chocolate fondant, raspberry coulis, vanilla gelato.",
+          price: "$20",
+          badge: "desserts",
+        },
+        {
+          title: "Reserve Cabernet",
+          description:
+            "Napa Valley reserve cabernet sauvignon, full-bodied, oak-aged.",
+          price: "$24",
+          badge: "drinks",
+        },
+        {
+          title: "Smoky Old Fashioned",
+          description:
+            "Smoked bourbon, demerara, angostura, flamed orange peel.",
+          price: "$18",
+          badge: "drinks",
+        },
       ],
     },
-    'menu-categories': {
-      headline: 'Menu Categories',
-      subheadline: 'Browse by category.',
+    "menu-categories": {
+      headline: "Menu Categories",
+      subheadline: "Browse by category.",
       items: [
-        { title: 'All', description: 'all' },
-        { title: 'Starters', description: 'starters' },
-        { title: 'Main Course', description: 'mains' },
-        { title: 'Desserts', description: 'desserts' },
-        { title: 'Drinks', description: 'drinks' },
+        { title: "All", description: "all" },
+        { title: "Starters", description: "starters" },
+        { title: "Main Course", description: "mains" },
+        { title: "Desserts", description: "desserts" },
+        { title: "Drinks", description: "drinks" },
       ],
     },
-    'specials': {
-      headline: "Chef's Specials",
-      subheadline: 'Limited-time creations from our head chef.',
+    specials: {
+      headline: "Featured Specials",
+      subheadline: "Limited-time creations from our head chef.",
       items: [
-        { title: 'Wagyu Beef Tenderloin', description: 'Pan-seared A5 wagyu with black truffle jus and roasted garlic mash.', price: '$68', badge: "Chef's Pick", image: resolvePicsumUrl(600, 400, 305) },
-        { title: 'Grilled Lobster Tail', description: 'Butter-poached Maine lobster with saffron risotto and champagne beurre blanc.', price: '$54', badge: 'Popular', image: resolvePicsumUrl(600, 400, 306) },
+        {
+          title: "Wagyu Beef Tenderloin",
+          description:
+            "Pan-seared A5 wagyu with black truffle jus and roasted garlic mash.",
+          price: "$68",
+          badge: "Chef's Pick",
+          image: resolvePicsumUrl(600, 400, 305),
+        },
+        {
+          title: "Grilled Lobster Tail",
+          description:
+            "Butter-poached Maine lobster with saffron risotto and champagne beurre blanc.",
+          price: "$54",
+          badge: "Popular",
+          image: resolvePicsumUrl(600, 400, 306),
+        },
       ],
     },
     // ─── Gallery Sections ────────────────────────────────────────────────
-    'gallery': {
-      headline: 'Our Gallery',
-      subheadline: 'A visual journey through our world.',
+    gallery: {
+      headline: "Our Gallery",
+      subheadline: "A visual journey through our world.",
       items: [
-        { title: 'Image 1', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 310) },
-        { title: 'Image 2', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 311) },
-        { title: 'Image 3', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 312) },
-        { title: 'Image 4', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 313) },
-        { title: 'Image 5', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 314) },
-        { title: 'Image 6', description: 'Gallery image', image: resolvePicsumUrl(600, 400, 315) },
+        {
+          title: "Image 1",
+          description: "Gallery image",
+          image: resolvePicsumUrl(600, 400, 310),
+        },
+        {
+          title: "Image 2",
+          description: "Gallery image",
+          image: resolvePicsumUrl(600, 400, 311),
+        },
+        {
+          title: "Image 3",
+          description: "Gallery image",
+          image: resolvePicsumUrl(600, 400, 312),
+        },
+        {
+          title: "Image 4",
+          description: "Gallery image",
+          image: resolvePicsumUrl(600, 400, 313),
+        },
+        {
+          title: "Image 5",
+          description: "Gallery image",
+          image: resolvePicsumUrl(600, 400, 314),
+        },
+        {
+          title: "Image 6",
+          description: "Gallery image",
+          image: resolvePicsumUrl(600, 400, 315),
+        },
       ],
     },
-    'photo-grid': {
-      headline: 'Photo Gallery',
-      subheadline: 'Moments captured in time.',
+    "photo-grid": {
+      headline: "Photo Gallery",
+      subheadline: "Moments captured in time.",
       items: [
-        { title: 'Photo 1', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 320) },
-        { title: 'Photo 2', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 321) },
-        { title: 'Photo 3', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 322) },
-        { title: 'Photo 4', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 323) },
-        { title: 'Photo 5', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 324) },
-        { title: 'Photo 6', description: 'Gallery photo', image: resolvePicsumUrl(600, 400, 325) },
+        {
+          title: "Photo 1",
+          description: "Gallery photo",
+          image: resolvePicsumUrl(600, 400, 320),
+        },
+        {
+          title: "Photo 2",
+          description: "Gallery photo",
+          image: resolvePicsumUrl(600, 400, 321),
+        },
+        {
+          title: "Photo 3",
+          description: "Gallery photo",
+          image: resolvePicsumUrl(600, 400, 322),
+        },
+        {
+          title: "Photo 4",
+          description: "Gallery photo",
+          image: resolvePicsumUrl(600, 400, 323),
+        },
+        {
+          title: "Photo 5",
+          description: "Gallery photo",
+          image: resolvePicsumUrl(600, 400, 324),
+        },
+        {
+          title: "Photo 6",
+          description: "Gallery photo",
+          image: resolvePicsumUrl(600, 400, 325),
+        },
       ],
     },
-    'lightbox': {
-      headline: 'Gallery',
-      subheadline: 'Click any image to view full size.',
+    lightbox: {
+      headline: "Gallery",
+      subheadline: "Click any image to view full size.",
     },
     // ─── Reservation / Booking ───────────────────────────────────────────
-    'reservation-form': {
-      headline: 'Reserve a Table',
-      subheadline: 'Book your dining experience with us.',
-      ctaText: 'Book Now',
+    "reservation-form": {
+      headline: "Make a Booking",
+      subheadline: "Book your dining experience with us.",
+      ctaText: "Book Now",
     },
     // ─── Location / Hours ────────────────────────────────────────────────
-    'hours': {
-      headline: 'Opening Hours',
-      subheadline: 'We look forward to welcoming you.',
+    hours: {
+      headline: "Opening Hours",
+      subheadline: "We look forward to welcoming you.",
       items: [
-        { title: 'Monday', description: 'Closed' },
-        { title: 'Tuesday – Thursday', description: '5:30 PM – 10:00 PM' },
-        { title: 'Friday – Saturday', description: '5:30 PM – 11:00 PM' },
-        { title: 'Sunday', description: '5:00 PM – 9:30 PM' },
+        { title: "Monday – Friday", description: "9:00 AM – 6:00 PM" },
+        { title: "Saturday", description: "10:00 AM – 4:00 PM" },
+        { title: "Sunday", description: "Closed" },
       ],
     },
-    'location': {
-      headline: 'Find Us',
-      subheadline: 'Visit us at our location.',
-      description: '742 Culinary Lane, New York, NY 10012',
+    location: {
+      headline: "Find Us",
+      subheadline: "Visit us at our location.",
+      description: "123 Main Street, Your City, ST 00000",
     },
     // ─── E-commerce Sections ─────────────────────────────────────────────
-    'product-grid': {
-      headline: 'Our Products',
-      subheadline: 'Explore our latest collection.',
+    "product-grid": {
+      headline: "Our Products",
+      subheadline: "Explore our latest collection.",
       items: [
-        { title: 'Product One', description: 'Premium quality with attention to detail.', price: '$49.99', image: resolvePicsumUrl(400, 400, 330), badge: 'New' },
-        { title: 'Product Two', description: 'Best-selling item loved by thousands.', price: '$79.99', image: resolvePicsumUrl(400, 400, 331), badge: 'Popular' },
-        { title: 'Product Three', description: 'Limited edition exclusive release.', price: '$99.99', image: resolvePicsumUrl(400, 400, 332), badge: 'Limited' },
-        { title: 'Product Four', description: 'Everyday essential at a great price.', price: '$29.99', image: resolvePicsumUrl(400, 400, 333) },
+        {
+          title: "Product One",
+          description: "Premium quality with attention to detail.",
+          price: "$49.99",
+          image: resolvePicsumUrl(400, 400, 330),
+          badge: "New",
+        },
+        {
+          title: "Product Two",
+          description: "Best-selling item loved by thousands.",
+          price: "$79.99",
+          image: resolvePicsumUrl(400, 400, 331),
+          badge: "Popular",
+        },
+        {
+          title: "Product Three",
+          description: "Limited edition exclusive release.",
+          price: "$99.99",
+          image: resolvePicsumUrl(400, 400, 332),
+          badge: "Limited",
+        },
+        {
+          title: "Product Four",
+          description: "Everyday essential at a great price.",
+          price: "$29.99",
+          image: resolvePicsumUrl(400, 400, 333),
+        },
       ],
-      ctaText: 'Shop Now',
+      ctaText: "Shop Now",
     },
-    'featured-products': {
-      headline: 'Featured Products',
-      subheadline: 'Hand-picked favorites from our collection.',
+    "featured-products": {
+      headline: "Featured Products",
+      subheadline: "Hand-picked favorites from our collection.",
       items: [
-        { title: 'Premium Item', description: 'Our most popular product this season.', price: '$129.99', image: resolvePicsumUrl(600, 400, 334), badge: 'Featured' },
-        { title: 'Classic Essential', description: 'A timeless piece for every wardrobe.', price: '$89.99', image: resolvePicsumUrl(600, 400, 335) },
-        { title: 'New Arrival', description: 'Fresh from our latest collection.', price: '$69.99', image: resolvePicsumUrl(600, 400, 336), badge: 'New' },
+        {
+          title: "Premium Item",
+          description: "Our most popular product this season.",
+          price: "$129.99",
+          image: resolvePicsumUrl(600, 400, 334),
+          badge: "Featured",
+        },
+        {
+          title: "Classic Essential",
+          description: "A timeless piece for every wardrobe.",
+          price: "$89.99",
+          image: resolvePicsumUrl(600, 400, 335),
+        },
+        {
+          title: "New Arrival",
+          description: "Fresh from our latest collection.",
+          price: "$69.99",
+          image: resolvePicsumUrl(600, 400, 336),
+          badge: "New",
+        },
       ],
     },
     // ─── Categories Section ──────────────────────────────────────────────
-    'categories': {
-      headline: 'Browse Categories',
-      subheadline: 'Explore our curated categories.',
+    categories: {
+      headline: "Browse Categories",
+      subheadline: "Explore our curated categories.",
       items: [
-        { title: 'Clothing', description: 'Apparel for every occasion.', image: resolvePicsumUrl(400, 300, 360), link: '#' },
-        { title: 'Accessories', description: 'Complete your look.', image: resolvePicsumUrl(400, 300, 361), link: '#' },
-        { title: 'Electronics', description: 'Latest gadgets and tech.', image: resolvePicsumUrl(400, 300, 362), link: '#' },
-        { title: 'Home & Living', description: 'Furnish your space.', image: resolvePicsumUrl(400, 300, 363), link: '#' },
-        { title: 'Sports', description: 'Gear up for adventure.', image: resolvePicsumUrl(400, 300, 364), link: '#' },
-        { title: 'Beauty', description: 'Skincare, makeup & more.', image: resolvePicsumUrl(400, 300, 365), link: '#' },
+        {
+          title: "Clothing",
+          description: "Apparel for every occasion.",
+          image: resolvePicsumUrl(400, 300, 360),
+          link: "#",
+        },
+        {
+          title: "Accessories",
+          description: "Complete your look.",
+          image: resolvePicsumUrl(400, 300, 361),
+          link: "#",
+        },
+        {
+          title: "Electronics",
+          description: "Latest gadgets and tech.",
+          image: resolvePicsumUrl(400, 300, 362),
+          link: "#",
+        },
+        {
+          title: "Home & Living",
+          description: "Furnish your space.",
+          image: resolvePicsumUrl(400, 300, 363),
+          link: "#",
+        },
+        {
+          title: "Sports",
+          description: "Gear up for adventure.",
+          image: resolvePicsumUrl(400, 300, 364),
+          link: "#",
+        },
+        {
+          title: "Beauty",
+          description: "Skincare, makeup & more.",
+          image: resolvePicsumUrl(400, 300, 365),
+          link: "#",
+        },
       ],
     },
     // ─── Contact Map & Info Sections ─────────────────────────────────────
-    'map': {
-      headline: 'Find Us',
-      subheadline: 'Visit us at our location.',
-      description: '123 Business Avenue, Suite 100, San Francisco, CA 94102',
-      ctaText: 'Get Directions',
+    map: {
+      headline: "Find Us",
+      subheadline: "Visit us at our location.",
+      description: "123 Business Avenue, Suite 100, San Francisco, CA 94102",
+      ctaText: "Get Directions",
     },
-    'info': {
-      headline: 'Contact Information',
-      subheadline: 'Get in touch through any channel below.',
+    info: {
+      headline: "Contact Information",
+      subheadline: "Get in touch through any channel below.",
       items: [
-        { title: 'Email', description: 'hello@example.com', icon: 'mail' },
-        { title: 'Phone', description: '+1 (555) 123-4567', icon: 'phone' },
-        { title: 'Address', description: '123 Business Avenue, Suite 100, San Francisco, CA 94102', icon: 'map-pin' },
-        { title: 'Business Hours', description: 'Mon-Fri: 9:00 AM - 6:00 PM', icon: 'clock' },
+        { title: "Email", description: "hello@example.com", icon: "mail" },
+        { title: "Phone", description: "+1 (555) 123-4567", icon: "phone" },
+        {
+          title: "Address",
+          description:
+            "123 Business Avenue, Suite 100, San Francisco, CA 94102",
+          icon: "map-pin",
+        },
+        {
+          title: "Business Hours",
+          description: "Mon-Fri: 9:00 AM - 6:00 PM",
+          icon: "clock",
+        },
       ],
     },
     // ─── Blog Sections ───────────────────────────────────────────────────
-    'blog-grid': {
-      headline: 'Latest Articles',
-      subheadline: 'Insights, tips, and stories from our team.',
+    "blog-grid": {
+      headline: "Latest Articles",
+      subheadline: "Insights, tips, and stories from our team.",
       items: [
-        { title: 'Getting Started with Modern Web Design', description: 'Learn the fundamentals of creating beautiful, responsive websites.', image: resolvePicsumUrl(600, 400, 340), badge: 'Design' },
-        { title: '10 Tips for Better User Experience', description: 'Practical advice to improve usability and delight your users.', image: resolvePicsumUrl(600, 400, 341), badge: 'UX' },
-        { title: 'The Future of Digital Products', description: 'Exploring trends that will shape the next generation of products.', image: resolvePicsumUrl(600, 400, 342), badge: 'Trends' },
+        {
+          title: "Getting Started with Modern Web Design",
+          description:
+            "Learn the fundamentals of creating beautiful, responsive websites.",
+          image: resolvePicsumUrl(600, 400, 340),
+          badge: "Design",
+        },
+        {
+          title: "10 Tips for Better User Experience",
+          description:
+            "Practical advice to improve usability and delight your users.",
+          image: resolvePicsumUrl(600, 400, 341),
+          badge: "UX",
+        },
+        {
+          title: "The Future of Digital Products",
+          description:
+            "Exploring trends that will shape the next generation of products.",
+          image: resolvePicsumUrl(600, 400, 342),
+          badge: "Trends",
+        },
       ],
     },
-    'post-grid': {
-      headline: 'Recent Posts',
-      subheadline: 'Stay up to date with our latest content.',
+    "post-grid": {
+      headline: "Recent Posts",
+      subheadline: "Stay up to date with our latest content.",
       items: [
-        { title: 'Building Scalable Systems', description: 'Architecture patterns for growth.', image: resolvePicsumUrl(600, 400, 343), badge: 'Engineering' },
-        { title: 'Design Principles That Work', description: 'Timeless principles for modern interfaces.', image: resolvePicsumUrl(600, 400, 344), badge: 'Design' },
-        { title: 'Launching Your First Product', description: 'A step-by-step guide to going live.', image: resolvePicsumUrl(600, 400, 345), badge: 'Startup' },
+        {
+          title: "Building Scalable Systems",
+          description: "Architecture patterns for growth.",
+          image: resolvePicsumUrl(600, 400, 343),
+          badge: "Engineering",
+        },
+        {
+          title: "Design Principles That Work",
+          description: "Timeless principles for modern interfaces.",
+          image: resolvePicsumUrl(600, 400, 344),
+          badge: "Design",
+        },
+        {
+          title: "Launching Your First Product",
+          description: "A step-by-step guide to going live.",
+          image: resolvePicsumUrl(600, 400, 345),
+          badge: "Startup",
+        },
       ],
     },
-    'featured-posts': {
-      headline: 'Featured Stories',
-      subheadline: 'Our most popular articles.',
+    "featured-posts": {
+      headline: "Featured Stories",
+      subheadline: "Our most popular articles.",
       items: [
-        { title: 'How We Built Our Platform', description: 'The story behind our technology and the decisions that shaped it.', image: resolvePicsumUrl(800, 400, 346), badge: 'Featured' },
-        { title: 'Customer Success Story', description: 'How one company transformed their workflow with our tools.', image: resolvePicsumUrl(800, 400, 347), badge: 'Case Study' },
+        {
+          title: "How We Built Our Platform",
+          description:
+            "The story behind our technology and the decisions that shaped it.",
+          image: resolvePicsumUrl(800, 400, 346),
+          badge: "Featured",
+        },
+        {
+          title: "Customer Success Story",
+          description:
+            "How one company transformed their workflow with our tools.",
+          image: resolvePicsumUrl(800, 400, 347),
+          badge: "Case Study",
+        },
       ],
     },
     // ─── Portfolio Sections ──────────────────────────────────────────────
-    'project-grid': {
-      headline: 'Our Work',
-      subheadline: 'Selected projects we are proud of.',
+    "project-grid": {
+      headline: "Our Work",
+      subheadline: "Selected projects we are proud of.",
       items: [
-        { title: 'Brand Redesign', description: 'Complete visual identity overhaul for a tech startup.', image: resolvePicsumUrl(600, 400, 350), badge: 'Branding' },
-        { title: 'E-commerce Platform', description: 'Full-stack web application with 50K+ monthly users.', image: resolvePicsumUrl(600, 400, 351), badge: 'Web App' },
-        { title: 'Mobile App', description: 'Cross-platform app with 4.8-star rating on both stores.', image: resolvePicsumUrl(600, 400, 352), badge: 'Mobile' },
-        { title: 'Dashboard UI', description: 'Analytics dashboard for real-time data visualization.', image: resolvePicsumUrl(600, 400, 353), badge: 'UI/UX' },
+        {
+          title: "Brand Redesign",
+          description: "Complete visual identity overhaul for a tech startup.",
+          image: resolvePicsumUrl(600, 400, 350),
+          badge: "Branding",
+        },
+        {
+          title: "E-commerce Platform",
+          description: "Full-stack web application with 50K+ monthly users.",
+          image: resolvePicsumUrl(600, 400, 351),
+          badge: "Web App",
+        },
+        {
+          title: "Mobile App",
+          description:
+            "Cross-platform app with 4.8-star rating on both stores.",
+          image: resolvePicsumUrl(600, 400, 352),
+          badge: "Mobile",
+        },
+        {
+          title: "Dashboard UI",
+          description: "Analytics dashboard for real-time data visualization.",
+          image: resolvePicsumUrl(600, 400, 353),
+          badge: "UI/UX",
+        },
       ],
     },
-    'featured-projects': {
-      headline: 'Featured Projects',
-      subheadline: 'Showcase of our best work.',
+    "featured-projects": {
+      headline: "Featured Projects",
+      subheadline: "Showcase of our best work.",
       items: [
-        { title: 'Flagship Project', description: 'Our award-winning project that pushed boundaries.', image: resolvePicsumUrl(800, 500, 354), badge: 'Award Winner' },
-        { title: 'Innovation Lab', description: 'Experimental project exploring new technologies.', image: resolvePicsumUrl(800, 500, 355), badge: 'Innovation' },
+        {
+          title: "Flagship Project",
+          description: "Our award-winning project that pushed boundaries.",
+          image: resolvePicsumUrl(800, 500, 354),
+          badge: "Award Winner",
+        },
+        {
+          title: "Innovation Lab",
+          description: "Experimental project exploring new technologies.",
+          image: resolvePicsumUrl(800, 500, 355),
+          badge: "Innovation",
+        },
       ],
     },
-    'skills': {
-      headline: 'Our Expertise',
-      subheadline: 'Technologies and skills we excel at.',
+    skills: {
+      headline: "Our Expertise",
+      subheadline: "Technologies and skills we excel at.",
       items: [
-        { title: 'Frontend Development', description: 'React, Vue, Angular, TypeScript' },
-        { title: 'Backend Development', description: 'Node.js, Python, Go, Rust' },
-        { title: 'Design', description: 'Figma, UI/UX, Design Systems' },
-        { title: 'DevOps', description: 'Docker, Kubernetes, CI/CD, AWS' },
+        {
+          title: "Frontend Development",
+          description: "React, Vue, Angular, TypeScript",
+        },
+        {
+          title: "Backend Development",
+          description: "Node.js, Python, Go, Rust",
+        },
+        { title: "Design", description: "Figma, UI/UX, Design Systems" },
+        { title: "DevOps", description: "Docker, Kubernetes, CI/CD, AWS" },
       ],
     },
-    'sidebar': {
-      headline: 'Quick Links',
-      subheadline: 'Navigate to popular sections.',
+    sidebar: {
+      headline: "Quick Links",
+      subheadline: "Navigate to popular sections.",
       items: [
-        { title: 'About Us', description: 'Learn more about our mission.', link: '#about' },
-        { title: 'Services', description: 'What we offer.', link: '#services' },
-        { title: 'Contact', description: 'Get in touch.', link: '#contact' },
+        {
+          title: "About Us",
+          description: "Learn more about our mission.",
+          link: "#about",
+        },
+        { title: "Services", description: "What we offer.", link: "#services" },
+        { title: "Contact", description: "Get in touch.", link: "#contact" },
       ],
     },
   };
@@ -668,12 +1097,13 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
     const generated = generateContent({
       sectionType,
       industry,
-      tone: 'professional',
+      tone: "professional",
+      variationIndex,
     });
     if (generated.content.headline) {
       return {
         headline: generated.content.headline,
-        subheadline: generated.content.subheadline || '',
+        subheadline: generated.content.subheadline || "",
         items: generated.content.items || [],
       };
     }
@@ -682,9 +1112,9 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
   }
 
   const sectionLabel = sectionType
-    .split('-')
+    .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+    .join(" ");
 
   return {
     headline: sectionLabel,
@@ -698,26 +1128,36 @@ function getDefaultContent(sectionType: string, industry: string): SectionConten
 function generateHeroSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   // Use real fetched image, explicit content image, or fall back to Picsum
   const heroImage = ctx?.images?.[0];
-  const heroImgUrl = heroImage?.url || content.image || resolvePicsumUrl(1200, 600, sectionIndex + 1);
-  const heroImgAlt = heroImage?.alt || content.headline || 'Hero image';
+  const heroImgUrl =
+    heroImage?.url ||
+    content.image ||
+    resolvePicsumUrl(1200, 600, sectionIndex + 1);
+  const heroImgAlt = heroImage?.alt || content.headline || "Hero image";
 
   // Use UIverse button templates if available
-  const primaryBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Started', { variant: 'primary', href: '#' });
+  const primaryBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Get Started",
+    { variant: "primary", href: "#" },
+  );
   const secondaryBtn = content.ctaSecondaryText
-    ? instantiateButton(ctx?.uiverse, content.ctaSecondaryText, { variant: 'secondary', href: '#' })
-    : '';
+    ? instantiateButton(ctx?.uiverse, content.ctaSecondaryText, {
+        variant: "secondary",
+        href: "#",
+      })
+    : "";
 
   const html = `<!-- Hero Section -->
 <section class="hero-section" id="hero">
   <div class="hero-bg-pattern"></div>
   <div class="container">
     <div class="hero-content animate-on-scroll">
-      <h1 class="hero-title">${content.headline || 'Welcome'}</h1>
-      <p class="hero-subtitle">${content.subheadline || ''}</p>
+      <h1 class="hero-title">${content.headline || "Welcome"}</h1>
+      <p class="hero-subtitle">${content.subheadline || ""}</p>
       <div class="hero-actions">
         ${primaryBtn}
         ${secondaryBtn}
@@ -819,47 +1259,53 @@ function generateHeroSection(
   opacity: 0.5;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateFeaturesSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const itemsHtml = items
-    .map(
-      (item, i) => {
-        // Use fetched icon image if available
-        const fetchedIcon = ctx?.images?.[i];
-        const iconUrl = fetchedIcon?.isIcon ? fetchedIcon.url : (item.icon && item.icon.startsWith('http') ? item.icon : null);
-        const iconSrc = fetchedIcon?.svgContent 
-          ? fetchedIcon.svgContent 
-          : (iconUrl
-            ? `<img src="${iconUrl}" alt="${item.title} icon" class="feature-icon-img" width="28" height="28" loading="lazy">`
-            : `<span class="feature-icon-emoji">${item.icon || '✦'}</span>`);
+    .map((item, i) => {
+      // Use fetched icon image if available
+      const fetchedIcon = ctx?.images?.[i];
+      const iconUrl = fetchedIcon?.isIcon
+        ? fetchedIcon.url
+        : item.icon && item.icon.startsWith("http")
+          ? item.icon
+          : null;
+      const iconSrc = fetchedIcon?.svgContent
+        ? fetchedIcon.svgContent
+        : iconUrl
+          ? `<img src="${iconUrl}" alt="${item.title} icon" class="feature-icon-img" width="28" height="28" loading="lazy">`
+          : `<span class="feature-icon-emoji">${item.icon || "✦"}</span>`;
 
-        // Use UIverse card template if available
-        return instantiateCard(ctx?.uiverse, {
+      // Use UIverse card template if available
+      return instantiateCard(
+        ctx?.uiverse,
+        {
           title: item.title,
           description: item.description,
-          icon: fetchedIcon?.svgContent || iconUrl || item.icon || '✦',
+          icon: fetchedIcon?.svgContent || iconUrl || item.icon || "✦",
           index: i,
-        }, {
-          extraClasses: 'feature-card',
+        },
+        {
+          extraClasses: "feature-card",
           animateDelay: i * 100,
-        });
-      }
-    )
-    .join('\n');
+        },
+      );
+    })
+    .join("\n");
 
   const html = `<!-- Features Section -->
 <section class="features-section section" id="features">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Features'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "Features"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <div class="features-grid stagger-children">
 ${itemsHtml}
@@ -949,47 +1395,51 @@ ${itemsHtml}
   line-height: 1.6;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generatePricingSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
   const cardsHtml = items
     .map((item, i) => {
-      const isPopular = item.badge === 'Most Popular' || i === 1;
-      const ctaBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Started', {
-        variant: isPopular ? 'primary' : 'secondary',
-        href: item.link || '#',
-      });
+      const isPopular = item.badge === "Most Popular" || i === 1;
+      const ctaBtn = instantiateButton(
+        ctx?.uiverse,
+        content.ctaText || "Get Started",
+        {
+          variant: isPopular ? "primary" : "secondary",
+          href: item.link || "#",
+        },
+      );
 
       return `
-        <div class="pricing-card card animate-on-scroll ${isPopular ? 'pricing-card--popular' : ''}" style="transition-delay: ${i * 100}ms">
-          ${isPopular ? '<span class="pricing-badge badge">Most Popular</span>' : ''}
+        <div class="pricing-card card animate-on-scroll ${isPopular ? "pricing-card--popular" : ""}" style="transition-delay: ${i * 100}ms">
+          ${isPopular ? '<span class="pricing-badge badge">Most Popular</span>' : ""}
           <h3 class="pricing-name">${item.title}</h3>
           <p class="pricing-description">${item.description}</p>
-          <div class="pricing-price">${item.price || '$0/mo'}</div>
+          <div class="pricing-price">${item.price || "$0/mo"}</div>
           <ul class="pricing-features-list">
             <li>Feature included</li>
             <li>Feature included</li>
             <li>Feature included</li>
-            ${isPopular ? '<li>Bonus feature</li><li>Priority support</li>' : ''}
+            ${isPopular ? "<li>Bonus feature</li><li>Priority support</li>" : ""}
           </ul>
           ${ctaBtn}
         </div>`;
     })
-    .join('\n');
+    .join("\n");
 
   const html = `<!-- Pricing Section -->
 <section class="pricing-section section" id="pricing">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Pricing'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "Pricing"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <div class="pricing-grid stagger-children">
 ${cardsHtml}
@@ -1102,23 +1552,23 @@ ${cardsHtml}
   margin-top: auto;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateTestimonialsSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
   const cardsHtml = items
-    .map(
-      (item, i) => {
-        // Use fetched avatar or fall back to Picsum
-        const fetchedAvatar = ctx?.images?.[i];
-        const avatarUrl = fetchedAvatar?.url || item.image || resolvePicsumUrl(80, 80, 200 + i);
-        return `
+    .map((item, i) => {
+      // Use fetched avatar or fall back to Picsum
+      const fetchedAvatar = ctx?.images?.[i];
+      const avatarUrl =
+        fetchedAvatar?.url || item.image || resolvePicsumUrl(80, 80, 200 + i);
+      return `
         <div class="testimonial-card card animate-on-scroll" style="transition-delay: ${i * 100}ms">
           <div class="testimonial-avatar">
             <img src="${avatarUrl}" alt="${item.title}" class="testimonial-avatar-img" width="48" height="48" loading="lazy">
@@ -1126,19 +1576,18 @@ function generateTestimonialsSection(
           <blockquote class="testimonial-quote">${item.description}</blockquote>
           <div class="testimonial-author">
             <strong>${item.title}</strong>
-            ${item.badge ? `<span class="testimonial-role">${item.badge}</span>` : ''}
+            ${item.badge ? `<span class="testimonial-role">${item.badge}</span>` : ""}
           </div>
         </div>`;
-      }
-    )
-    .join('\n');
+    })
+    .join("\n");
 
   const html = `<!-- Testimonials Section -->
 <section class="testimonials-section section" id="testimonials">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Testimonials'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "Testimonials"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <div class="testimonials-grid stagger-children">
 ${cardsHtml}
@@ -1220,25 +1669,33 @@ ${cardsHtml}
   color: var(--color-neutral-500);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateCtaSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
-  const primaryBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Started', { variant: 'primary', href: '#', extraClasses: 'btn-lg' });
+  const primaryBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Get Started",
+    { variant: "primary", href: "#", extraClasses: "btn-lg" },
+  );
   const secondaryBtn = content.ctaSecondaryText
-    ? instantiateButton(ctx?.uiverse, content.ctaSecondaryText, { variant: 'secondary', href: '#', extraClasses: 'btn-lg' })
-    : '';
+    ? instantiateButton(ctx?.uiverse, content.ctaSecondaryText, {
+        variant: "secondary",
+        href: "#",
+        extraClasses: "btn-lg",
+      })
+    : "";
 
   const html = `<!-- CTA Section -->
 <section class="cta-section section" id="cta">
   <div class="container">
     <div class="cta-content animate-on-scroll">
-      <h2 class="cta-title">${content.headline || 'Ready to Start?'}</h2>
-      <p class="cta-subtitle">${content.subheadline || ''}</p>
+      <h2 class="cta-title">${content.headline || "Ready to Start?"}</h2>
+      <p class="cta-subtitle">${content.subheadline || ""}</p>
       <div class="cta-actions">
         ${primaryBtn}
         ${secondaryBtn}
@@ -1302,13 +1759,13 @@ function generateCtaSection(
   background: rgba(255, 255, 255, 0.15);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateFaqSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
@@ -1325,16 +1782,16 @@ function generateFaqSection(
           <div class="faq-answer" id="faq-answer-${i}" role="region" aria-labelledby="faq-question-${i}">
             <p>${item.description}</p>
           </div>
-        </div>`
+        </div>`,
     )
-    .join('\n');
+    .join("\n");
 
   const html = `<!-- FAQ Section -->
 <section class="faq-section section" id="faq">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'FAQ'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "FAQ"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <div class="faq-list">
 ${faqHtml}
@@ -1436,19 +1893,37 @@ document.querySelectorAll('.faq-question').forEach(btn => {
 function generateContactFormSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   // Use UIverse input templates if available
-  const nameInput = instantiateInput(ctx?.uiverse, { name: 'name', label: 'Full Name', placeholder: 'John Doe', required: true, id: 'name', type: 'text' });
-  const emailInput = instantiateInput(ctx?.uiverse, { name: 'email', label: 'Email', placeholder: 'john@example.com', required: true, id: 'email', type: 'email' });
-  const submitBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Send Message', { variant: 'primary' });
+  const nameInput = instantiateInput(ctx?.uiverse, {
+    name: "name",
+    label: "Full Name",
+    placeholder: "John Doe",
+    required: true,
+    id: "name",
+    type: "text",
+  });
+  const emailInput = instantiateInput(ctx?.uiverse, {
+    name: "email",
+    label: "Email",
+    placeholder: "john@example.com",
+    required: true,
+    id: "email",
+    type: "email",
+  });
+  const submitBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Send Message",
+    { variant: "primary", isSubmit: true },
+  );
 
   const html = `<!-- Contact Form Section -->
 <section class="contact-section section" id="contact">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Contact Us'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "Contact Us"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <form class="contact-form animate-on-scroll" novalidate>
       <div class="form-group">
@@ -1527,23 +2002,32 @@ function generateContactFormSection(
   min-height: 120px;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateNewsletterSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
-  const emailInput = instantiateInput(ctx?.uiverse, { name: 'newsletter-email', placeholder: 'Enter your email', required: true, type: 'email' });
-  const submitBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Subscribe', { variant: 'primary' });
+  const emailInput = instantiateInput(ctx?.uiverse, {
+    name: "newsletter-email",
+    placeholder: "Enter your email",
+    required: true,
+    type: "email",
+  });
+  const submitBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Subscribe",
+    { variant: "primary", isSubmit: true },
+  );
 
   const html = `<!-- Newsletter Section -->
 <section class="newsletter-section section" id="newsletter">
   <div class="container">
     <div class="newsletter-content animate-on-scroll">
-      <h2 class="newsletter-title">${content.headline || 'Stay Updated'}</h2>
-      <p class="newsletter-subtitle">${content.subheadline || ''}</p>
+      <h2 class="newsletter-title">${content.headline || "Stay Updated"}</h2>
+      <p class="newsletter-subtitle">${content.subheadline || ""}</p>
       <form class="newsletter-form" action="#" method="post">
         ${emailInput}
         ${submitBtn}
@@ -1593,13 +2077,13 @@ function generateNewsletterSection(
   flex: 1;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateFooterSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const html = `<!-- Footer -->
 <footer class="site-footer" id="footer">
@@ -1607,7 +2091,7 @@ function generateFooterSection(
     <div class="footer-grid">
       <div class="footer-brand">
         <h3 class="footer-logo">${resolveBrandName(ctx?.brandName) || content.headline}</h3>
-        <p class="footer-description">${content.description || 'Building the future, one product at a time.'}</p>
+        <p class="footer-description">${content.description || "Building the future, one product at a time."}</p>
       </div>
       <div class="footer-links">
         <h4 class="footer-heading">Product</h4>
@@ -1637,7 +2121,7 @@ function generateFooterSection(
       </div>
     </div>
     <div class="footer-bottom">
-      <p>&copy; ${new Date().getFullYear()} ${content.headline || 'Company'}. All rights reserved.</p>
+      <p>&copy; ${new Date().getFullYear()} ${content.headline || "Company"}. All rights reserved.</p>
     </div>
   </div>
 </footer>`;
@@ -1713,15 +2197,19 @@ function generateFooterSection(
   color: var(--color-neutral-500);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateNavigationSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
-  const navCta = instantiateButton(ctx?.uiverse, 'Get Started', { variant: 'primary', href: '#', extraClasses: 'nav-cta' });
+  const navCta = instantiateButton(ctx?.uiverse, "Get Started", {
+    variant: "primary",
+    href: "#",
+    extraClasses: "nav-cta",
+  });
 
   // Use real page links from context when available, otherwise fall back to section anchors
   const brandName = resolveBrandName(ctx?.brandName) || content.headline;
@@ -1729,11 +2217,13 @@ function generateNavigationSection(
 
   if (ctx?.pages && ctx.pages.length > 0) {
     // Real multi-page navigation — generate links to actual pages
-    navLinksHtml = ctx.pages.map(page => {
-      const href = page.isHomepage ? 'index.html' : `${page.slug}.html`;
-      const activeClass = ctx.currentPageSlug === page.slug ? ' active' : '';
-      return `      <li><a href="${href}" class="nav-link${activeClass}">${page.name}</a></li>`;
-    }).join('\n');
+    navLinksHtml = ctx.pages
+      .map((page) => {
+        const href = page.isHomepage ? "index.html" : `${page.slug}.html`;
+        const activeClass = ctx.currentPageSlug === page.slug ? " active" : "";
+        return `      <li><a href="${href}" class="nav-link${activeClass}">${page.name}</a></li>`;
+      })
+      .join("\n");
   } else {
     // Single-page fallback — generate anchor links to sections on the current page
     navLinksHtml = `      <li><a href="#features" class="nav-link">Features</a></li>
@@ -1904,34 +2394,32 @@ document.querySelectorAll('a[href^="#"]').forEach(function(link) {
 function generateHowItWorksSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const stepsHtml = items
-    .map(
-      (item, i) => {
-        const fetchedIcon = ctx?.images?.[i];
-        const iconSrc = fetchedIcon?.svgContent
-          ? fetchedIcon.svgContent
-          : (item.icon && item.icon.startsWith('http')
-            ? `<img src="${item.icon}" alt="${item.title} icon" class="step-icon-img" width="28" height="28" loading="lazy">`
-            : `<span class="step-icon-emoji">${item.icon || (i + 1)}</span>`);
-        return `
+    .map((item, i) => {
+      const fetchedIcon = ctx?.images?.[i];
+      const iconSrc = fetchedIcon?.svgContent
+        ? fetchedIcon.svgContent
+        : item.icon && item.icon.startsWith("http")
+          ? `<img src="${item.icon}" alt="${item.title} icon" class="step-icon-img" width="28" height="28" loading="lazy">`
+          : `<span class="step-icon-emoji">${item.icon || i + 1}</span>`;
+      return `
         <div class="step-card animate-on-scroll" style="transition-delay: ${i * 150}ms">
           <div class="step-number">${iconSrc}</div>
           <h3 class="step-title">${item.title}</h3>
           <p class="step-description">${item.description}</p>
         </div>`;
-      }
-    )
-    .join('\n');
+    })
+    .join("\n");
 
   const html = `<!-- How It Works Section -->
 <section class="how-it-works-section section" id="how-it-works">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'How It Works'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "How It Works"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <div class="steps-grid stagger-children">
 ${stepsHtml}
@@ -2004,22 +2492,26 @@ ${stepsHtml}
   line-height: 1.6;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateClientsSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
-  const logosHtml = items.map((item) => `
-          <div class="client-logo">${item.title}</div>`).join('\n');
+  const logosHtml = items
+    .map(
+      (item) => `
+          <div class="client-logo">${item.title}</div>`,
+    )
+    .join("\n");
 
   const html = `<!-- Clients Section -->
 <section class="clients-section section" id="clients">
   <div class="container">
-    <h2 class="clients-title animate-on-scroll">${content.headline || 'Trusted By'}</h2>
+    <h2 class="clients-title animate-on-scroll">${content.headline || "Trusted By"}</h2>
     <div class="clients-grid animate-on-scroll">
 ${logosHtml}
     </div>
@@ -2062,13 +2554,13 @@ ${logosHtml}
   color: var(--color-neutral-700);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateStatsSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const statsHtml = items
@@ -2077,14 +2569,14 @@ function generateStatsSection(
         <div class="stat-card animate-on-scroll" style="transition-delay: ${i * 100}ms">
           <div class="stat-value">${item.title}</div>
           <div class="stat-label">${item.description}</div>
-        </div>`
+        </div>`,
     )
-    .join('\n');
+    .join("\n");
 
   const html = `<!-- Stats Section -->
 <section class="stats-section section" id="stats">
   <div class="container">
-    ${content.headline ? `<h2 class="section-title animate-on-scroll" style="text-align:center;margin-bottom:var(--space-3xl)">${content.headline}</h2>` : ''}
+    ${content.headline ? `<h2 class="section-title animate-on-scroll" style="text-align:center;margin-bottom:var(--space-3xl)">${content.headline}</h2>` : ""}
     <div class="stats-grid stagger-children">
 ${statsHtml}
     </div>
@@ -2127,40 +2619,46 @@ ${statsHtml}
   font-weight: 500;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateServicesSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const cardsHtml = items
-    .map(
-      (item, i) => {
-        const fetchedIcon = ctx?.images?.[i];
-        const iconUrl = fetchedIcon?.isIcon ? fetchedIcon.url : (item.icon && item.icon.startsWith('http') ? item.icon : null);
+    .map((item, i) => {
+      const fetchedIcon = ctx?.images?.[i];
+      const iconUrl = fetchedIcon?.isIcon
+        ? fetchedIcon.url
+        : item.icon && item.icon.startsWith("http")
+          ? item.icon
+          : null;
 
-        return instantiateCard(ctx?.uiverse, {
+      return instantiateCard(
+        ctx?.uiverse,
+        {
           title: item.title,
           description: item.description,
-          icon: iconUrl || item.icon || '✦',
+          icon: iconUrl || item.icon || "✦",
           index: i,
-        }, {
-          extraClasses: 'service-card',
+        },
+        {
+          extraClasses: "service-card",
           animateDelay: i * 100,
-        });
-      }
-    )
-    .join('\n');
+        },
+      );
+    })
+    .join("\n");
 
   const html = `<!-- Services Section -->
 <section class="services-section section" id="services">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Services'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "Services"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <div class="services-grid stagger-children">
 ${cardsHtml}
@@ -2248,40 +2746,38 @@ ${cardsHtml}
   line-height: 1.6;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateTeamSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const cardsHtml = items
-    .map(
-      (item, i) => {
-        // Use fetched portrait or fall back
-        const fetchedAvatar = ctx?.images?.[i];
-        const avatarUrl = fetchedAvatar?.url || item.image;
-        const avatarHtml = avatarUrl
-          ? `<img src="${avatarUrl}" alt="${item.title}" class="team-avatar-img" width="80" height="80" loading="lazy">`
-          : `<div class="team-avatar-fallback">${item.title.charAt(0)}</div>`;
-        return `
+    .map((item, i) => {
+      // Use fetched portrait or fall back
+      const fetchedAvatar = ctx?.images?.[i];
+      const avatarUrl = fetchedAvatar?.url || item.image;
+      const avatarHtml = avatarUrl
+        ? `<img src="${avatarUrl}" alt="${item.title}" class="team-avatar-img" width="80" height="80" loading="lazy">`
+        : `<div class="team-avatar-fallback">${item.title.charAt(0)}</div>`;
+      return `
         <div class="team-card card animate-on-scroll" style="transition-delay: ${i * 100}ms">
           <div class="team-avatar">${avatarHtml}</div>
           <h3 class="team-name">${item.title}</h3>
           <p class="team-role">${item.description}</p>
         </div>`;
-      }
-    )
-    .join('\n');
+    })
+    .join("\n");
 
   const html = `<!-- Team Section -->
 <section class="team-section section" id="team">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Our Team'}</h2>
-      <p class="section-subtitle">${content.subheadline || ''}</p>
+      <h2 class="section-title">${content.headline || "Our Team"}</h2>
+      <p class="section-subtitle">${content.subheadline || ""}</p>
     </div>
     <div class="team-grid stagger-children">
 ${cardsHtml}
@@ -2367,21 +2863,28 @@ ${cardsHtml}
   color: var(--color-neutral-500);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 function generateAboutSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   // Use fetched image, explicit content image, or fall back
   const aboutImage = ctx?.images?.[0];
-  const aboutImgUrl = aboutImage?.url || content.image || resolvePicsumUrl(800, 500, sectionIndex + 50);
-  const aboutImgAlt = aboutImage?.alt || content.headline || 'About our company';
+  const aboutImgUrl =
+    aboutImage?.url ||
+    content.image ||
+    resolvePicsumUrl(800, 500, sectionIndex + 50);
+  const aboutImgAlt =
+    aboutImage?.alt || content.headline || "About our company";
   const ctaBtn = content.ctaText
-    ? instantiateButton(ctx?.uiverse, content.ctaText, { variant: 'secondary', href: '#' })
-    : '';
+    ? instantiateButton(ctx?.uiverse, content.ctaText, {
+        variant: "secondary",
+        href: "#",
+      })
+    : "";
 
   const html = `<!-- About Section -->
 <section class="about-section section" id="about">
@@ -2393,8 +2896,8 @@ function generateAboutSection(
         </div>
       </div>
       <div class="about-content animate-from-right">
-        <h2 class="section-title">${content.headline || 'About Us'}</h2>
-        <p class="about-text">${content.description || ''}</p>
+        <h2 class="section-title">${content.headline || "About Us"}</h2>
+        <p class="about-text">${content.description || ""}</p>
         ${ctaBtn}
       </div>
     </div>
@@ -2445,7 +2948,7 @@ function generateAboutSection(
   margin: var(--space-lg) 0 var(--space-xl);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Menu Preview Section ────────────────────────────────────────────────────
@@ -2453,41 +2956,51 @@ function generateAboutSection(
 function generateMenuPreviewSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const images = ctx?.images || [];
 
-  const cardsHtml = items.map((item, i) => {
-    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 301 + i);
-    return instantiateCard(ctx?.uiverse, {
-      title: item.title,
-      description: item.description,
-      image: imgSrc,
-      badge: item.badge,
-      price: item.price || '',
-      index: i,
-    }, {
-      extraClasses: 'menu-prev-card',
-      animateDelay: i * 100,
-    });
-  }).join('\n');
+  const cardsHtml = items
+    .map((item, i) => {
+      const imgSrc =
+        images[i]?.url || item.image || resolvePicsumUrl(600, 400, 301 + i);
+      return instantiateCard(
+        ctx?.uiverse,
+        {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          badge: item.badge,
+          price: item.price || "",
+          index: i,
+        },
+        {
+          extraClasses: "menu-prev-card",
+          animateDelay: i * 100,
+        },
+      );
+    })
+    .join("\n");
 
   const ctaBtn = content.ctaText
-    ? instantiateButton(ctx?.uiverse, content.ctaText, { variant: 'primary', href: '#menu' })
-    : '';
+    ? instantiateButton(ctx?.uiverse, content.ctaText, {
+        variant: "primary",
+        href: "#menu",
+      })
+    : "";
 
   const html = `<!-- Menu Preview Section -->
 <section class="menu-prev-section section" id="menu-preview">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Our Signature Dishes'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Our Featured Offerings"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="menu-prev-grid stagger-children">
 ${cardsHtml}
     </div>
-    ${ctaBtn ? `<div class="menu-prev-cta animate-on-scroll">${ctaBtn}</div>` : ''}
+    ${ctaBtn ? `<div class="menu-prev-cta animate-on-scroll">${ctaBtn}</div>` : ""}
   </div>
 </section>`;
 
@@ -2503,7 +3016,7 @@ ${cardsHtml}
   .menu-prev-grid { grid-template-columns: 1fr; }
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Menu Items Section (with category filtering) ────────────────────────────
@@ -2511,49 +3024,61 @@ ${cardsHtml}
 function generateMenuItemsSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
   // Extract unique categories from item badges
-  const categories = ['all', ...new Set(items.map(item => item.badge || 'other').filter(Boolean))];
+  const categories = [
+    "all",
+    ...new Set(items.map((item) => item.badge || "other").filter(Boolean)),
+  ];
 
   // Use instantiateButton for filter buttons, inject data-filter attribute
-  const filterBtns = categories.map((cat, i) => {
-    const label = cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1);
-    const btn = instantiateButton(ctx?.uiverse, label, {
-      variant: i === 0 ? 'primary' : 'secondary',
-      extraClasses: `menu-filter-btn${i === 0 ? ' active' : ''}`,
-    });
-    // Inject data-filter attribute on the root element
-    return btn.replace(/^<(\w+)/, `<$1 data-filter="${cat}"`);
-  }).join('\n          ');
+  const filterBtns = categories
+    .map((cat, i) => {
+      const label =
+        cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1);
+      const btn = instantiateButton(ctx?.uiverse, label, {
+        variant: i === 0 ? "primary" : "secondary",
+        extraClasses: `menu-filter-btn${i === 0 ? " active" : ""}`,
+      });
+      // Inject data-filter attribute on the root element
+      return btn.replace(/^<(\w+)/, `<$1 data-filter="${cat}"`);
+    })
+    .join("\n          ");
 
   // Use instantiateCard for menu items, inject data-category for JS filtering
-  const menuItemsHtml = items.map((item, i) => {
-    const imgSrc = item.image || resolvePicsumUrl(200, 200, 400 + i);
-    const category = item.badge || 'other';
-    const cardHtml = instantiateCard(ctx?.uiverse, {
-      title: item.title,
-      description: item.description,
-      image: imgSrc,
-      badge: item.badge,
-      price: item.price || '',
-      index: i,
-    }, {
-      extraClasses: 'menu-item',
-      animateDelay: (i % 4) * 80,
-    });
-    // Inject data-category attribute on the root element for filtering
-    return cardHtml.replace(/^<(\w+)/, `<$1 data-category="${category}"`);
-  }).join('\n');
+  const menuItemsHtml = items
+    .map((item, i) => {
+      const imgSrc = item.image || resolvePicsumUrl(200, 200, 400 + i);
+      const category = item.badge || "other";
+      const cardHtml = instantiateCard(
+        ctx?.uiverse,
+        {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          badge: item.badge,
+          price: item.price || "",
+          index: i,
+        },
+        {
+          extraClasses: "menu-item",
+          animateDelay: (i % 4) * 80,
+        },
+      );
+      // Inject data-category attribute on the root element for filtering
+      return cardHtml.replace(/^<(\w+)/, `<$1 data-category="${category}"`);
+    })
+    .join("\n");
 
   const html = `<!-- Menu Items Section -->
 <section class="menu-items-section section" id="menu-items">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Our Menu'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Our Offerings"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="menu-filters animate-on-scroll">
           ${filterBtns}
@@ -2606,7 +3131,7 @@ document.querySelectorAll('.menu-filter-btn').forEach(function(btn) {
 function generateMenuCategoriesSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   // Menu categories is essentially the filter tabs — reuse menu-items logic
   return generateMenuItemsSection(content, sectionIndex, ctx);
@@ -2617,32 +3142,39 @@ function generateMenuCategoriesSection(
 function generateSpecialsSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const images = ctx?.images || [];
 
-  const cardsHtml = items.map((item, i) => {
-    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 305 + i);
-    return instantiateCard(ctx?.uiverse, {
-      title: item.title,
-      description: item.description,
-      image: imgSrc,
-      badge: item.badge,
-      price: item.price,
-      index: i,
-    }, {
-      extraClasses: 'special-card',
-      animateDelay: i * 150,
-    });
-  }).join('\n');
+  const cardsHtml = items
+    .map((item, i) => {
+      const imgSrc =
+        images[i]?.url || item.image || resolvePicsumUrl(600, 400, 305 + i);
+      return instantiateCard(
+        ctx?.uiverse,
+        {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          badge: item.badge,
+          price: item.price,
+          index: i,
+        },
+        {
+          extraClasses: "special-card",
+          animateDelay: i * 150,
+        },
+      );
+    })
+    .join("\n");
 
   const html = `<!-- Specials Section -->
 <section class="specials-section section" id="specials">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || "Chef's Specials"}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Featured Specials"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="specials-grid stagger-children">
 ${cardsHtml}
@@ -2663,7 +3195,7 @@ ${cardsHtml}
 }
 @keyframes pulse-badge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Gallery Section ─────────────────────────────────────────────────────────
@@ -2671,29 +3203,32 @@ ${cardsHtml}
 function generateGallerySection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const images = ctx?.images || [];
 
-  const galleryItems = items.map((item, i) => {
-    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 310 + i);
-    const fullSrc = imgSrc.replace('/600/400', '/1200/800');
-    return `
+  const galleryItems = items
+    .map((item, i) => {
+      const imgSrc =
+        images[i]?.url || item.image || resolvePicsumUrl(600, 400, 310 + i);
+      const fullSrc = imgSrc.replace("/600/400", "/1200/800");
+      return `
         <div class="gallery-item animate-on-scroll" data-src="${fullSrc}" style="transition-delay: ${i * 80}ms">
-          <img src="${imgSrc}" alt="${item.title || 'Gallery image ' + (i + 1)}" width="600" height="400" loading="lazy" decoding="async">
+          <img src="${imgSrc}" alt="${item.title || "Gallery image " + (i + 1)}" width="600" height="400" loading="lazy" decoding="async">
           <div class="gallery-overlay">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="32" height="32"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>
           </div>
         </div>`;
-  }).join('\n');
+    })
+    .join("\n");
 
   const html = `<!-- Gallery Section -->
 <section class="gallery-section section" id="gallery">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Our Gallery'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Our Gallery"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="gallery-grid stagger-children">
 ${galleryItems}
@@ -2827,7 +3362,7 @@ ${galleryItems}
 function generatePhotoGridSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   return generateGallerySection(content, sectionIndex, ctx);
 }
@@ -2837,21 +3372,51 @@ function generatePhotoGridSection(
 function generateReservationFormSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   // Use instantiateInput for text/email/tel/date inputs
-  const nameInput = instantiateInput(ctx?.uiverse, { name: 'res-name', label: 'Full Name', placeholder: 'John Doe', required: true, id: 'res-name', type: 'text' });
-  const emailInput = instantiateInput(ctx?.uiverse, { name: 'res-email', label: 'Email', placeholder: 'john@example.com', required: true, id: 'res-email', type: 'email' });
-  const phoneInput = instantiateInput(ctx?.uiverse, { name: 'res-phone', label: 'Phone', placeholder: '+1 (555) 000-0000', id: 'res-phone', type: 'tel' });
-  const dateInput = instantiateInput(ctx?.uiverse, { name: 'res-date', label: 'Date', id: 'res-date', type: 'date', required: true });
-  const submitBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Book Now', { variant: 'primary', extraClasses: 'reservation-submit' });
+  const nameInput = instantiateInput(ctx?.uiverse, {
+    name: "res-name",
+    label: "Full Name",
+    placeholder: "John Doe",
+    required: true,
+    id: "res-name",
+    type: "text",
+  });
+  const emailInput = instantiateInput(ctx?.uiverse, {
+    name: "res-email",
+    label: "Email",
+    placeholder: "john@example.com",
+    required: true,
+    id: "res-email",
+    type: "email",
+  });
+  const phoneInput = instantiateInput(ctx?.uiverse, {
+    name: "res-phone",
+    label: "Phone",
+    placeholder: "+1 (555) 000-0000",
+    id: "res-phone",
+    type: "tel",
+  });
+  const dateInput = instantiateInput(ctx?.uiverse, {
+    name: "res-date",
+    label: "Date",
+    id: "res-date",
+    type: "date",
+    required: true,
+  });
+  const submitBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Book Now",
+    { variant: "primary", extraClasses: "reservation-submit", isSubmit: true },
+  );
 
   const html = `<!-- Reservation Form Section -->
 <section class="reservation-section section" id="reservation-form">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Reserve a Table'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Make a Booking"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="reservation-grid">
       <div class="reservation-form-wrap animate-from-left">
@@ -2871,10 +3436,10 @@ function generateReservationFormSection(
               ${phoneInput}
             </div>
             <div class="form-group">
-              <label class="form-label" for="res-guests">Guests</label>
+              <label class="form-label" for="res-guests">Number of People</label>
               <select id="res-guests" class="form-input">
-                <option>1 Guest</option><option>2 Guests</option><option selected>3 Guests</option>
-                <option>4 Guests</option><option>5 Guests</option><option>6+ Guests</option>
+                <option>1 Person</option><option>2 People</option><option selected>3 People</option>
+                <option>4 People</option><option>5 People</option><option>6+ People</option>
               </select>
             </div>
           </div>
@@ -2892,7 +3457,7 @@ function generateReservationFormSection(
           </div>
           <div class="form-group">
             <label class="form-label" for="res-message">Special Requests</label>
-            <textarea id="res-message" class="form-input form-textarea" placeholder="Dietary requirements, celebrations, seating preferences..."></textarea>
+            <textarea id="res-message" class="form-input form-textarea" placeholder="Special requests, preferences, additional notes..."></textarea>
           </div>
           <div class="form-submit-wrap" style="width:100%;">${submitBtn}</div>
         </form>
@@ -2902,17 +3467,16 @@ function generateReservationFormSection(
         <div class="res-info-card">
           <h3>Opening Hours</h3>
           <ul class="res-hours">
-            <li><span>Monday</span><span>Closed</span></li>
-            <li><span>Tue – Thu</span><span>5:30 – 10:00 PM</span></li>
-            <li><span>Fri – Sat</span><span>5:30 – 11:00 PM</span></li>
-            <li><span>Sunday</span><span>5:00 – 9:30 PM</span></li>
+            <li><span>Mon – Fri</span><span>9:00 AM – 6:00 PM</span></li>
+            <li><span>Saturday</span><span>10:00 AM – 4:00 PM</span></li>
+            <li><span>Sunday</span><span>Closed</span></li>
           </ul>
         </div>
         <div class="res-info-card">
           <h3>Contact</h3>
-          <p>+1 (212) 555-0189</p>
-          <p>hello@restaurant.com</p>
-          <p>742 Culinary Lane, New York, NY 10012</p>
+          <p>+1 (555) 000-0000</p>
+          <p>hello@yourbusiness.com</p>
+          <p>123 Main Street, Your City, ST 00000</p>
         </div>
       </div>
     </div>
@@ -3030,19 +3594,22 @@ function generateReservationFormSection(
 function generateHoursSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
-  const hoursHtml = items.map(item =>
-    `<li><span>${item.title}</span><span>${item.description}</span></li>`
-  ).join('\n            ');
+  const hoursHtml = items
+    .map(
+      (item) =>
+        `<li><span>${item.title}</span><span>${item.description}</span></li>`,
+    )
+    .join("\n            ");
 
   const html = `<!-- Hours Section -->
 <section class="hours-section section" id="hours">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Opening Hours'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Opening Hours"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="hours-card animate-on-scroll">
       <ul class="hours-list">
@@ -3071,7 +3638,7 @@ function generateHoursSection(
 .hours-list li:last-child { border-bottom: none; }
 .hours-list li span:first-child { font-weight: 600; color: var(--color-neutral-900); }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Location Section ────────────────────────────────────────────────────────
@@ -3079,20 +3646,20 @@ function generateHoursSection(
 function generateLocationSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const html = `<!-- Location Section -->
 <section class="location-section section" id="location">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Find Us'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Find Us"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="location-card animate-on-scroll">
       <div class="location-icon">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="48" height="48"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       </div>
-      <p class="location-address">${content.description || '742 Culinary Lane, New York, NY 10012'}</p>
+      <p class="location-address">${content.description || "123 Main Street, Your City, ST 00000"}</p>
     </div>
   </div>
 </section>`;
@@ -3113,7 +3680,7 @@ function generateLocationSection(
   line-height: 1.6;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Product Grid Section ────────────────────────────────────────────────────
@@ -3121,33 +3688,40 @@ function generateLocationSection(
 function generateProductGridSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const images = ctx?.images || [];
 
-  const productsHtml = items.map((item, i) => {
-    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(400, 400, 330 + i);
-    return instantiateCard(ctx?.uiverse, {
-      title: item.title,
-      description: item.description,
-      image: imgSrc,
-      badge: item.badge,
-      price: item.price || '',
-      link: item.link || '#',
-      index: i,
-    }, {
-      extraClasses: 'product-card',
-      animateDelay: i * 100,
-    });
-  }).join('\n');
+  const productsHtml = items
+    .map((item, i) => {
+      const imgSrc =
+        images[i]?.url || item.image || resolvePicsumUrl(400, 400, 330 + i);
+      return instantiateCard(
+        ctx?.uiverse,
+        {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          badge: item.badge,
+          price: item.price || "",
+          link: item.link || "#",
+          index: i,
+        },
+        {
+          extraClasses: "product-card",
+          animateDelay: i * 100,
+        },
+      );
+    })
+    .join("\n");
 
   const html = `<!-- Product Grid Section -->
 <section class="product-grid-section section" id="product-grid">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Our Products'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Our Products"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="product-grid stagger-children">
 ${productsHtml}
@@ -3163,7 +3737,7 @@ ${productsHtml}
   gap: var(--space-2xl);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Blog Grid Section ───────────────────────────────────────────────────────
@@ -3171,32 +3745,39 @@ ${productsHtml}
 function generateBlogGridSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const images = ctx?.images || [];
 
-  const postsHtml = items.map((item, i) => {
-    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 340 + i);
-    return instantiateCard(ctx?.uiverse, {
-      title: item.title,
-      description: item.description,
-      image: imgSrc,
-      badge: item.badge,
-      link: item.link || '#',
-      index: i,
-    }, {
-      extraClasses: 'blog-card',
-      animateDelay: i * 100,
-    });
-  }).join('\n');
+  const postsHtml = items
+    .map((item, i) => {
+      const imgSrc =
+        images[i]?.url || item.image || resolvePicsumUrl(600, 400, 340 + i);
+      return instantiateCard(
+        ctx?.uiverse,
+        {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          badge: item.badge,
+          link: item.link || "#",
+          index: i,
+        },
+        {
+          extraClasses: "blog-card",
+          animateDelay: i * 100,
+        },
+      );
+    })
+    .join("\n");
 
   const html = `<!-- Blog Grid Section -->
 <section class="blog-grid-section section" id="blog-grid">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Latest Articles'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Latest Articles"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="blog-grid stagger-children">
 ${postsHtml}
@@ -3212,7 +3793,7 @@ ${postsHtml}
   gap: var(--space-2xl);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Project Grid Section ────────────────────────────────────────────────────
@@ -3220,31 +3801,38 @@ ${postsHtml}
 function generateProjectGridSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const images = ctx?.images || [];
 
-  const projectsHtml = items.map((item, i) => {
-    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(600, 400, 350 + i);
-    return instantiateCard(ctx?.uiverse, {
-      title: item.title,
-      description: item.description,
-      image: imgSrc,
-      badge: item.badge,
-      index: i,
-    }, {
-      extraClasses: 'project-card',
-      animateDelay: i * 100,
-    });
-  }).join('\n');
+  const projectsHtml = items
+    .map((item, i) => {
+      const imgSrc =
+        images[i]?.url || item.image || resolvePicsumUrl(600, 400, 350 + i);
+      return instantiateCard(
+        ctx?.uiverse,
+        {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          badge: item.badge,
+          index: i,
+        },
+        {
+          extraClasses: "project-card",
+          animateDelay: i * 100,
+        },
+      );
+    })
+    .join("\n");
 
   const html = `<!-- Project Grid Section -->
 <section class="project-grid-section section" id="project-grid">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Our Work'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Our Work"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="project-grid stagger-children">
 ${projectsHtml}
@@ -3287,7 +3875,7 @@ ${projectsHtml}
   border-radius: var(--radius-sm); margin-bottom: var(--space-sm);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Categories Section ──────────────────────────────────────────────────────
@@ -3295,31 +3883,38 @@ ${projectsHtml}
 function generateCategoriesSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
   const images = ctx?.images || [];
 
-  const cardsHtml = items.map((item, i) => {
-    const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(400, 300, 360 + i);
-    return instantiateCard(ctx?.uiverse, {
-      title: item.title,
-      description: item.description,
-      image: imgSrc,
-      link: item.link || '#',
-      index: i,
-    }, {
-      extraClasses: 'category-card',
-      animateDelay: i * 100,
-    });
-  }).join('\n');
+  const cardsHtml = items
+    .map((item, i) => {
+      const imgSrc =
+        images[i]?.url || item.image || resolvePicsumUrl(400, 300, 360 + i);
+      return instantiateCard(
+        ctx?.uiverse,
+        {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          link: item.link || "#",
+          index: i,
+        },
+        {
+          extraClasses: "category-card",
+          animateDelay: i * 100,
+        },
+      );
+    })
+    .join("\n");
 
   const html = `<!-- Categories Section -->
 <section class="categories-section section" id="categories">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Browse Categories'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Browse Categories"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="categories-grid stagger-children">
 ${cardsHtml}
@@ -3403,7 +3998,7 @@ ${cardsHtml}
   background: rgba(0,0,0,0.5);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Map Section ─────────────────────────────────────────────────────────────
@@ -3411,21 +4006,27 @@ ${cardsHtml}
 function generateMapSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
-  const address = content.description || '123 Business Avenue, Suite 100, San Francisco, CA 94102';
-  const encodedAddress = address.replace(/\s+/g, '+');
-  const directionsBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Get Directions', {
-    variant: 'primary',
-    href: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
-  });
+  const address =
+    content.description ||
+    "123 Business Avenue, Suite 100, San Francisco, CA 94102";
+  const encodedAddress = address.replace(/\s+/g, "+");
+  const directionsBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Get Directions",
+    {
+      variant: "primary",
+      href: `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`,
+    },
+  );
 
   const html = `<!-- Map Section -->
 <section class="map-section section" id="map">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Find Us'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Find Us"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="map-wrapper animate-on-scroll">
       <div class="map-embed">
@@ -3439,7 +4040,7 @@ function generateMapSection(
       </div>
       <div class="map-info-panel">
         <div class="map-address-icon">
-          <img src="${resolveIconForKeyword('map-pin')}" alt="" width="24" height="24" class="map-icon-img" />
+          <img src="${resolveIconForKeyword("map-pin")}" alt="" width="24" height="24" class="map-icon-img" />
         </div>
         <p class="map-address">${address}</p>
         <div class="map-directions-btn">
@@ -3526,7 +4127,7 @@ function generateMapSection(
   margin-top: var(--space-sm);
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Contact Info Section ────────────────────────────────────────────────────
@@ -3534,13 +4135,16 @@ function generateMapSection(
 function generateInfoSection(
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
   const items = content.items || [];
 
-  const cardsHtml = items.map((item, i) => {
-    const iconUrl = resolveIconForKeyword(item.icon || item.title.toLowerCase());
-    return `
+  const cardsHtml = items
+    .map((item, i) => {
+      const iconUrl = resolveIconForKeyword(
+        item.icon || item.title.toLowerCase(),
+      );
+      return `
       <div class="info-card animate-on-scroll" style="transition-delay: ${i * 100}ms">
         <div class="info-card-icon">
           <img src="${iconUrl}" alt="" width="24" height="24" class="info-icon-img" />
@@ -3548,7 +4152,8 @@ function generateInfoSection(
         <h3 class="info-card-title">${item.title}</h3>
         <p class="info-card-detail">${item.description}</p>
       </div>`;
-  }).join('\n');
+    })
+    .join("\n");
 
   const colCount = Math.min(items.length, 4);
 
@@ -3556,8 +4161,8 @@ function generateInfoSection(
 <section class="info-section section" id="info">
   <div class="container">
     <div class="section-header animate-on-scroll">
-      <h2 class="section-title">${content.headline || 'Contact Information'}</h2>
-      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ''}
+      <h2 class="section-title">${content.headline || "Contact Information"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
     </div>
     <div class="info-grid stagger-children">
 ${cardsHtml}
@@ -3638,93 +4243,771 @@ ${cardsHtml}
   line-height: 1.6;
 }`;
 
-  return { html, css, js: '' };
+  return { html, css, js: "" };
 }
 
 // ─── Generic fallback ───────────────────────────────────────────────────────
 
 // Meaningful fallback descriptions for section types without dedicated generators
-const GENERIC_SECTION_CONTENT: Record<string, { headline: string; description: string }> = {
-  'categories': { headline: 'Browse Categories', description: 'Explore our curated categories to find exactly what you\'re looking for.' },
-  'filters': { headline: 'Refine Your Search', description: 'Use filters to narrow down results by price, rating, category, and more.' },
-  'pagination': { headline: 'Browse More', description: 'Navigate through our full collection of products and services.' },
-  'product-gallery': { headline: 'Product Gallery', description: 'View detailed images from every angle to make an informed choice.' },
-  'product-info': { headline: 'Product Details', description: 'Complete specifications, materials, and sizing information.' },
-  'reviews': { headline: 'Customer Reviews', description: 'Read authentic reviews from verified customers who purchased this product.' },
-  'related-products': { headline: 'You May Also Like', description: 'Curated recommendations based on your current selection.' },
-  'cart-items': { headline: 'Your Shopping Cart', description: 'Review your selected items before proceeding to checkout.' },
-  'cart-summary': { headline: 'Order Summary', description: 'Your subtotal, shipping, and estimated total at a glance.' },
-  'recommended': { headline: 'Recommended For You', description: 'Handpicked suggestions based on your shopping preferences.' },
-  'sidebar': { headline: 'Quick Navigation', description: 'Jump to specific sections or filter content.' },
-  'social-links': { headline: 'Connect With Us', description: 'Follow us on social media for the latest updates and behind-the-scenes content.' },
-  'mission-values': { headline: 'Our Mission & Values', description: 'The principles that guide everything we do.' },
-  'milestones': { headline: 'Our Journey', description: 'Key moments that shaped who we are today.' },
-  'company-story': { headline: 'Our Story', description: 'How it all began and where we\'re headed next.' },
-  'process': { headline: 'Our Process', description: 'A transparent look at how we deliver results.' },
-  'case-studies': { headline: 'Case Studies', description: 'Real results from real clients — see the impact of our work.' },
-  'office-locations': { headline: 'Our Offices', description: 'Find the location nearest to you.' },
-  'bio': { headline: 'About the Author', description: 'Learn more about the person behind the content.' },
-  'experience': { headline: 'Experience', description: 'Professional background and expertise.' },
-  'article-content': { headline: 'Article', description: 'Full article content.' },
-  'author-bio': { headline: 'About the Author', description: 'Background and expertise of the author.' },
-  'related-posts': { headline: 'Related Articles', description: 'More articles you might enjoy reading.' },
-  'comments': { headline: 'Comments', description: 'Join the conversation below.' },
-  'feature-comparison': { headline: 'Compare Plans', description: 'See what\'s included in each plan at a glance.' },
-  'support-info': { headline: 'Support', description: 'Get help when you need it — our team is here for you.' },
-  'date-range': { headline: 'Date Range', description: 'Select a time period to view your data.' },
-  'export': { headline: 'Export Data', description: 'Download your data in various formats.' },
-  'chart-grid': { headline: 'Analytics Overview', description: 'Visual insights into your key performance metrics.' },
-  'profile-form': { headline: 'Profile Settings', description: 'Update your personal information and preferences.' },
-  'preferences': { headline: 'Preferences', description: 'Customize your experience.' },
-  'notifications': { headline: 'Notifications', description: 'Manage your notification preferences.' },
-  'security': { headline: 'Security', description: 'Manage passwords, two-factor authentication, and security settings.' },
-  'user-table': { headline: 'User Management', description: 'View, search, and manage user accounts.' },
-  'search': { headline: 'Search', description: 'Find what you\'re looking for quickly.' },
-  'quick-actions': { headline: 'Quick Actions', description: 'Frequently used actions at your fingertips.' },
-  'recent-activity': { headline: 'Recent Activity', description: 'See what\'s been happening across your workspace.' },
-  'map': { headline: 'Find Us', description: 'Visit us at our location — we\'d love to see you in person.' },
+const GENERIC_SECTION_CONTENT: Record<
+  string,
+  { headline: string; description: string }
+> = {
+  categories: {
+    headline: "Browse Categories",
+    description:
+      "Explore our curated categories to find exactly what you're looking for.",
+  },
+  filters: {
+    headline: "Refine Your Search",
+    description:
+      "Use filters to narrow down results by price, rating, category, and more.",
+  },
+  pagination: {
+    headline: "Browse More",
+    description:
+      "Navigate through our full collection of products and services.",
+  },
+  "product-gallery": {
+    headline: "Product Gallery",
+    description:
+      "View detailed images from every angle to make an informed choice.",
+  },
+  "product-info": {
+    headline: "Product Details",
+    description: "Complete specifications, materials, and sizing information.",
+  },
+  reviews: {
+    headline: "Customer Reviews",
+    description:
+      "Read authentic reviews from verified customers who purchased this product.",
+  },
+  "related-products": {
+    headline: "You May Also Like",
+    description: "Curated recommendations based on your current selection.",
+  },
+  "cart-items": {
+    headline: "Your Shopping Cart",
+    description: "Review your selected items before proceeding to checkout.",
+  },
+  "cart-summary": {
+    headline: "Order Summary",
+    description: "Your subtotal, shipping, and estimated total at a glance.",
+  },
+  recommended: {
+    headline: "Recommended For You",
+    description: "Handpicked suggestions based on your shopping preferences.",
+  },
+  sidebar: {
+    headline: "Quick Navigation",
+    description: "Jump to specific sections or filter content.",
+  },
+  "social-links": {
+    headline: "Connect With Us",
+    description:
+      "Follow us on social media for the latest updates and behind-the-scenes content.",
+  },
+  "mission-values": {
+    headline: "Our Mission & Values",
+    description: "The principles that guide everything we do.",
+  },
+  milestones: {
+    headline: "Our Journey",
+    description: "Key moments that shaped who we are today.",
+  },
+  "company-story": {
+    headline: "Our Story",
+    description: "How it all began and where we're headed next.",
+  },
+  process: {
+    headline: "Our Process",
+    description: "A transparent look at how we deliver results.",
+  },
+  "case-studies": {
+    headline: "Case Studies",
+    description: "Real results from real clients — see the impact of our work.",
+  },
+  "office-locations": {
+    headline: "Our Offices",
+    description: "Find the location nearest to you.",
+  },
+  bio: {
+    headline: "About the Author",
+    description: "Learn more about the person behind the content.",
+  },
+  experience: {
+    headline: "Experience",
+    description: "Professional background and expertise.",
+  },
+  "article-content": {
+    headline: "Article",
+    description: "Full article content.",
+  },
+  "author-bio": {
+    headline: "About the Author",
+    description: "Background and expertise of the author.",
+  },
+  "related-posts": {
+    headline: "Related Articles",
+    description: "More articles you might enjoy reading.",
+  },
+  comments: {
+    headline: "Comments",
+    description: "Join the conversation below.",
+  },
+  "feature-comparison": {
+    headline: "Compare Plans",
+    description: "See what's included in each plan at a glance.",
+  },
+  "support-info": {
+    headline: "Support",
+    description: "Get help when you need it — our team is here for you.",
+  },
+  "date-range": {
+    headline: "Date Range",
+    description: "Select a time period to view your data.",
+  },
+  export: {
+    headline: "Export Data",
+    description: "Download your data in various formats.",
+  },
+  "chart-grid": {
+    headline: "Analytics Overview",
+    description: "Visual insights into your key performance metrics.",
+  },
+  "profile-form": {
+    headline: "Profile Settings",
+    description: "Update your personal information and preferences.",
+  },
+  preferences: {
+    headline: "Preferences",
+    description: "Customize your experience.",
+  },
+  notifications: {
+    headline: "Notifications",
+    description: "Manage your notification preferences.",
+  },
+  security: {
+    headline: "Security",
+    description:
+      "Manage passwords, two-factor authentication, and security settings.",
+  },
+  "user-table": {
+    headline: "User Management",
+    description: "View, search, and manage user accounts.",
+  },
+  search: {
+    headline: "Search",
+    description: "Find what you're looking for quickly.",
+  },
+  "quick-actions": {
+    headline: "Quick Actions",
+    description: "Frequently used actions at your fingertips.",
+  },
+  "recent-activity": {
+    headline: "Recent Activity",
+    description: "See what's been happening across your workspace.",
+  },
+  map: {
+    headline: "Find Us",
+    description: "Visit us at our location — we'd love to see you in person.",
+  },
 };
 
-function generateGenericSection(
+/**
+ * Pattern-based section renderer.
+ * Classifies unknown section types into structural patterns (grid, detail, gallery, etc.)
+ * and renders rich, appropriate HTML instead of a useless <h2> + <p> fallback.
+ */
+function generatePatternSection(
   sectionType: string,
   content: SectionContent,
   sectionIndex: number,
-  ctx?: SectionContext
+  ctx?: SectionContext,
 ): { html: string; css: string; js: string } {
-  // Use provided content, then section-specific defaults, then format the type name
+  const pattern = classifySection(sectionType);
+  const label = formatSectionName(sectionType);
   const defaults = GENERIC_SECTION_CONTENT[sectionType];
-  const headline = content.headline || (defaults?.headline) || formatSectionName(sectionType);
+  const headline = content.headline || defaults?.headline || label;
   const subtitle = content.subheadline || '';
-  const description = content.description || (defaults?.description) || '';
+  const id = sectionType;
+  const cls = sectionType;
 
-  const html = `<!-- ${formatSectionName(sectionType)} Section -->
-<section class="${sectionType}-section section" id="${sectionType}">
+  switch (pattern) {
+    // ── GRID: Card grid with image + title + desc + optional price/badge ──
+    case 'grid': {
+      const items = content.items || [];
+      const images = ctx?.images || [];
+      const cardsHtml = items.map((item, i) => {
+        const imgSrc = images[i]?.url || item.image || resolvePicsumUrl(400, 400, 330 + i);
+        return instantiateCard(ctx?.uiverse, {
+          title: item.title,
+          description: item.description,
+          image: imgSrc,
+          badge: item.badge,
+          price: item.price || '',
+          link: item.link || '#',
+          index: i,
+        }, {
+          extraClasses: `${cls}-card`,
+          animateDelay: i * 100,
+        });
+      }).join('\n');
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${headline}</h2>
+      ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
+    </div>
+    <div class="${cls}-grid stagger-children">
+${cardsHtml}
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-5xl) 0; }
+.${cls}-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-2xl);
+}`,
+        js: '',
+      };
+    }
+
+    // ── DETAIL: Split layout — image + text + optional specs + CTA ──
+    case 'detail': {
+      const items = content.items || [];
+      const detailImage = ctx?.images?.[0];
+      const imgUrl = detailImage?.url || content.image || resolvePicsumUrl(800, 500, sectionIndex + 60);
+      const desc = content.description || content.subheadline || '';
+      const ctaBtn = content.ctaText
+        ? instantiateButton(ctx?.uiverse, content.ctaText, { variant: 'primary', href: '#' })
+        : '';
+
+      const specsHtml = items.length > 0
+        ? `<ul class="${cls}-specs">${items.map(item =>
+            `<li><strong>${item.title}</strong><span>${item.description}</span></li>`
+          ).join('\n')}</ul>`
+        : '';
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    <div class="${cls}-layout">
+      <div class="${cls}-image animate-from-left">
+        <div class="${cls}-image-wrapper">
+          <img src="${imgUrl}" alt="${headline}" width="800" height="500" loading="lazy" decoding="async">
+        </div>
+      </div>
+      <div class="${cls}-content animate-from-right">
+        <h2 class="section-title">${headline}</h2>
+        ${desc ? `<p class="${cls}-text">${desc}</p>` : ''}
+        ${specsHtml}
+        ${ctaBtn}
+      </div>
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-5xl) 0; }
+.${cls}-layout {
+  display: grid; grid-template-columns: 1fr;
+  gap: var(--space-3xl); align-items: center;
+}
+@media (min-width: 1024px) {
+  .${cls}-layout { grid-template-columns: 1fr 1fr; }
+}
+.${cls}-image-wrapper {
+  border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg);
+}
+.${cls}-image-wrapper img {
+  width: 100%; height: auto; display: block; object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.${cls}-image-wrapper:hover img { transform: scale(1.03); }
+.${cls}-text {
+  font-size: var(--fs-body); color: var(--color-neutral-700);
+  line-height: 1.7; margin-bottom: var(--space-xl);
+}
+.${cls}-specs { list-style: none; padding: 0; margin: 0 0 var(--space-xl) 0; }
+.${cls}-specs li {
+  display: flex; justify-content: space-between;
+  padding: var(--space-sm) 0; border-bottom: 1px solid var(--color-neutral-200);
+  font-size: var(--fs-body);
+}
+.${cls}-specs li strong { color: var(--color-neutral-900); }
+.${cls}-specs li span { color: var(--color-neutral-600); }`,
+        js: '',
+      };
+    }
+
+    // ── GALLERY: Image grid with hover zoom overlay ──
+    case 'gallery': {
+      const items = content.items || [];
+      const images = ctx?.images || [];
+      const galleryCount = Math.max(items.length, 4);
+      const galleryItems = Array.from({ length: galleryCount }, (_, i) => {
+        const item = items[i];
+        const imgSrc = images[i]?.url || item?.image || resolvePicsumUrl(600, 400, 310 + i);
+        const alt = item?.title || `${label} image ${i + 1}`;
+        return `
+        <div class="${cls}-item animate-on-scroll" style="transition-delay: ${i * 80}ms">
+          <img src="${imgSrc}" alt="${alt}" width="600" height="400" loading="lazy" decoding="async">
+          <div class="${cls}-overlay">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="32" height="32"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/></svg>
+          </div>
+        </div>`;
+      }).join('\n');
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${headline}</h2>
+      ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
+    </div>
+    <div class="${cls}-grid stagger-children">
+${galleryItems}
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-5xl) 0; }
+.${cls}-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 250px; gap: var(--space-md);
+}
+.${cls}-grid .${cls}-item:first-child { grid-column: span 2; grid-row: span 2; }
+.${cls}-item {
+  position: relative; border-radius: var(--radius-md);
+  overflow: hidden; cursor: pointer;
+}
+.${cls}-item img {
+  width: 100%; height: 100%; object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.${cls}-item:hover img { transform: scale(1.08); }
+.${cls}-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0);
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--transition-base);
+}
+.${cls}-overlay svg { color: #fff; opacity: 0; transform: scale(0.8); transition: all var(--transition-base); }
+.${cls}-item:hover .${cls}-overlay { background: rgba(0,0,0,0.4); }
+.${cls}-item:hover .${cls}-overlay svg { opacity: 1; transform: scale(1); }
+@media (max-width: 768px) {
+  .${cls}-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 200px; }
+  .${cls}-grid .${cls}-item:first-child { grid-column: span 1; grid-row: span 1; }
+}`,
+        js: '',
+      };
+    }
+
+    // ── REVIEW: Quote cards with avatar + star rating ──
+    case 'review': {
+      const items = content.items || [];
+      const images = ctx?.images || [];
+      const cardsHtml = items.map((item, i) => {
+        const avatarUrl = images[i]?.url || item.image || resolvePicsumUrl(80, 80, 200 + i);
+        const role = item.badge || (item as any).role || '';
+        return `
+        <div class="${cls}-card card animate-on-scroll" style="transition-delay: ${i * 100}ms">
+          <div class="${cls}-stars" aria-label="5 out of 5 stars">
+            ${'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="var(--color-warning)" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'.repeat(5)}
+          </div>
+          <blockquote class="${cls}-quote">${item.description}</blockquote>
+          <div class="${cls}-author">
+            <img src="${avatarUrl}" alt="${item.title}" class="${cls}-avatar" width="48" height="48" loading="lazy">
+            <div>
+              <strong>${item.title}</strong>
+              ${role ? `<span class="${cls}-role">${role}</span>` : ''}
+            </div>
+          </div>
+        </div>`;
+      }).join('\n');
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${headline}</h2>
+      ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
+    </div>
+    <div class="${cls}-grid stagger-children">
+${cardsHtml}
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-5xl) 0; }
+.${cls}-grid {
+  display: grid; grid-template-columns: 1fr;
+  gap: var(--space-xl); margin-top: var(--space-3xl);
+}
+@media (min-width: 768px) { .${cls}-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .${cls}-grid { grid-template-columns: repeat(3, 1fr); } }
+.${cls}-card {
+  padding: var(--space-xl); border-radius: var(--radius-lg);
+  background: var(--color-neutral-50); border: 1px solid var(--color-neutral-200);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+.${cls}-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.${cls}-stars { display: flex; gap: 2px; margin-bottom: var(--space-md); }
+.${cls}-quote {
+  font-size: var(--fs-body); color: var(--color-neutral-700);
+  line-height: 1.7; margin-bottom: var(--space-lg); font-style: italic;
+}
+.${cls}-author { display: flex; align-items: center; gap: var(--space-md); }
+.${cls}-avatar {
+  width: 48px; height: 48px; border-radius: var(--radius-full);
+  object-fit: cover; border: 2px solid var(--color-neutral-200);
+}
+.${cls}-author strong { display: block; color: var(--color-neutral-900); }
+.${cls}-role { font-size: var(--fs-small); color: var(--color-neutral-500); }`,
+        js: '',
+      };
+    }
+
+    // ── FORM: Input fields + submit button ──
+    case 'form': {
+      const items = content.items || [];
+      const fields = items.length > 0
+        ? items.map((item, i) => {
+            const fieldType = item.title.toLowerCase().includes('email') ? 'email'
+              : item.title.toLowerCase().includes('phone') ? 'tel'
+              : item.title.toLowerCase().includes('message') ? 'textarea'
+              : 'text';
+            const fieldId = `${cls}-field-${i}`;
+            if (fieldType === 'textarea') {
+              return `<div class="form-group">
+          <label for="${fieldId}">${item.title}</label>
+          <textarea id="${fieldId}" name="${fieldId}" placeholder="${item.description || item.title}" rows="4" class="form-input"></textarea>
+        </div>`;
+            }
+            return `<div class="form-group">
+          <label for="${fieldId}">${item.title}</label>
+          <input type="${fieldType}" id="${fieldId}" name="${fieldId}" placeholder="${item.description || item.title}" class="form-input" />
+        </div>`;
+          }).join('\n')
+        : `<div class="form-group">
+          <label for="${cls}-name">Name</label>
+          <input type="text" id="${cls}-name" name="name" placeholder="Your name" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label for="${cls}-email">Email</label>
+          <input type="email" id="${cls}-email" name="email" placeholder="Your email" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label for="${cls}-message">Message</label>
+          <textarea id="${cls}-message" name="message" placeholder="Your message" rows="4" class="form-input"></textarea>
+        </div>`;
+
+      const submitBtn = instantiateButton(ctx?.uiverse, content.ctaText || 'Submit', { variant: 'primary', isSubmit: true });
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${headline}</h2>
+      ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
+    </div>
+    <form class="${cls}-form animate-on-scroll" action="#" method="post">
+      ${fields}
+      <div class="form-actions">
+        ${submitBtn}
+      </div>
+    </form>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-5xl) 0; }
+.${cls}-form { max-width: 640px; margin: var(--space-3xl) auto 0; }
+.form-group { margin-bottom: var(--space-lg); }
+.form-group label {
+  display: block; font-weight: var(--fw-medium);
+  margin-bottom: var(--space-xs); color: var(--color-neutral-900);
+  font-size: var(--fs-small);
+}
+.form-input {
+  width: 100%; padding: var(--space-md);
+  border: 1px solid var(--color-neutral-300); border-radius: var(--radius-md);
+  font-size: var(--fs-body); font-family: var(--font-body);
+  transition: border-color var(--transition-fast); background: var(--color-neutral-50);
+}
+.form-input:focus {
+  outline: none; border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.1);
+}
+textarea.form-input { resize: vertical; min-height: 120px; }
+.form-actions { margin-top: var(--space-xl); }`,
+        js: '',
+      };
+    }
+
+    // ── LIST: Numbered/icon items with title + description ──
+    case 'list': {
+      const items = content.items || [];
+      const listHtml = items.map((item, i) => {
+        const fetchedIcon = ctx?.images?.[i];
+        const iconContent = fetchedIcon?.svgContent
+          ? fetchedIcon.svgContent
+          : `<span>${i + 1}</span>`;
+        return `
+        <div class="${cls}-item animate-on-scroll" style="transition-delay: ${i * 150}ms">
+          <div class="${cls}-icon">${iconContent}</div>
+          <div class="${cls}-item-body">
+            <h3 class="${cls}-item-title">${item.title}</h3>
+            <p class="${cls}-item-desc">${item.description}</p>
+          </div>
+        </div>`;
+      }).join('\n');
+
+      const colCount = Math.min(items.length || 3, 3);
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${headline}</h2>
+      ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
+    </div>
+    <div class="${cls}-list stagger-children">
+${listHtml}
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-5xl) 0; background: var(--color-neutral-100); }
+.${cls}-list {
+  display: grid; grid-template-columns: 1fr;
+  gap: var(--space-xl); margin-top: var(--space-3xl);
+}
+@media (min-width: 768px) {
+  .${cls}-list { grid-template-columns: repeat(${colCount}, 1fr); }
+}
+.${cls}-item { text-align: center; padding: var(--space-xl); }
+.${cls}-icon {
+  width: 64px; height: 64px; border-radius: var(--radius-full);
+  background: var(--color-primary); color: white;
+  font-family: var(--font-heading); font-size: var(--fs-h2);
+  font-weight: 700; display: flex; align-items: center;
+  justify-content: center; margin: 0 auto var(--space-lg);
+}
+.${cls}-icon svg { width: 28px; height: 28px; }
+.${cls}-item-title {
+  font-family: var(--font-heading); font-size: var(--fs-h4);
+  margin-bottom: var(--space-sm); color: var(--color-neutral-900);
+}
+.${cls}-item-desc { font-size: var(--fs-body); color: var(--color-neutral-600); line-height: 1.6; }`,
+        js: '',
+      };
+    }
+
+    // ── STATS: Number + label cards in a row ──
+    case 'stats': {
+      const items = content.items || [];
+      const statsHtml = items.map((item, i) => `
+        <div class="${cls}-card animate-on-scroll" style="transition-delay: ${i * 100}ms">
+          <div class="${cls}-value">${item.title}</div>
+          <div class="${cls}-label">${item.description}</div>
+        </div>`
+      ).join('\n');
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    ${headline ? `<h2 class="section-title animate-on-scroll" style="text-align:center;margin-bottom:var(--space-3xl)">${headline}</h2>` : ''}
+    <div class="${cls}-grid stagger-children">
+${statsHtml}
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-4xl) 0; }
+.${cls}-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-xl);
+}
+@media (min-width: 768px) {
+  .${cls}-grid { grid-template-columns: repeat(${Math.min(items.length || 4, 4)}, 1fr); }
+}
+.${cls}-card { text-align: center; padding: var(--space-xl); }
+.${cls}-value {
+  font-family: var(--font-heading); font-size: var(--fs-display);
+  font-weight: 700; color: var(--color-primary); margin-bottom: var(--space-xs);
+}
+.${cls}-label { font-size: var(--fs-body); color: var(--color-neutral-500); font-weight: 500; }`,
+        js: '',
+      };
+    }
+
+    // ── NAV: Pagination / filter controls / tabs ──
+    case 'nav': {
+      const items = content.items || [];
+      const isFilter = sectionType.includes('filter');
+      const isPagination = sectionType.includes('pagination');
+
+      let innerHtml: string;
+      if (isFilter && items.length > 0) {
+        innerHtml = `<div class="${cls}-controls">
+        ${items.map((item, i) => `<button class="${cls}-btn${i === 0 ? ' active' : ''}" data-filter="${item.title.toLowerCase()}">${item.title}</button>`).join('\n        ')}
+      </div>`;
+      } else if (isPagination) {
+        innerHtml = `<nav class="${cls}-controls" aria-label="Pagination">
+        <button class="${cls}-btn" disabled aria-label="Previous page">&laquo; Previous</button>
+        <button class="${cls}-btn active" aria-current="page">1</button>
+        <button class="${cls}-btn">2</button>
+        <button class="${cls}-btn">3</button>
+        <button class="${cls}-btn" aria-label="Next page">Next &raquo;</button>
+      </nav>`;
+      } else {
+        const tabItems = items.length > 0
+          ? items.map((item, i) => `<button class="${cls}-btn${i === 0 ? ' active' : ''}">${item.title}</button>`).join('\n        ')
+          : `<button class="${cls}-btn active">All</button>
+        <button class="${cls}-btn">Category 1</button>
+        <button class="${cls}-btn">Category 2</button>
+        <button class="${cls}-btn">Category 3</button>`;
+        innerHtml = `<div class="${cls}-controls">${tabItems}</div>`;
+      }
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    ${headline && !isPagination ? `<div class="section-header animate-on-scroll"><h2 class="section-title">${headline}</h2>${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}</div>` : ''}
+    <div class="${cls}-wrapper animate-on-scroll">
+      ${innerHtml}
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-xl) 0; }
+.${cls}-controls {
+  display: flex; flex-wrap: wrap; gap: var(--space-sm);
+  justify-content: center; margin-top: var(--space-lg);
+}
+.${cls}-btn {
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--color-neutral-300); border-radius: var(--radius-full);
+  background: var(--color-neutral-50); color: var(--color-neutral-700);
+  font-family: var(--font-body); font-size: var(--fs-small);
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.${cls}-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.${cls}-btn.active {
+  background: var(--color-primary); color: white; border-color: var(--color-primary);
+}
+.${cls}-btn:disabled { opacity: 0.5; cursor: not-allowed; }`,
+        js: '',
+      };
+    }
+
+    // ── TABLE: Data table with header row + data rows ──
+    case 'table': {
+      const items = content.items || [];
+      const hasPrice = items.some(item => item.price);
+      const headerCols = ['Item', 'Description'];
+      if (hasPrice) headerCols.push('Price');
+      headerCols.push('Action');
+
+      const rowsHtml = items.map((item, i) => `
+          <tr class="animate-on-scroll" style="transition-delay: ${i * 50}ms">
+            <td><strong>${item.title}</strong></td>
+            <td>${item.description}</td>
+            ${hasPrice ? `<td>${item.price || '\u2014'}</td>` : ''}
+            <td>${instantiateButton(ctx?.uiverse, item.badge || 'View', { variant: 'secondary', href: item.link || '#' })}</td>
+          </tr>`
+      ).join('\n');
+
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${headline}</h2>
+      ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
+    </div>
+    <div class="${cls}-table-wrapper">
+      <table class="${cls}-table">
+        <thead>
+          <tr>${headerCols.map(c => `<th>${c}</th>`).join('')}</tr>
+        </thead>
+        <tbody>
+${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>`,
+        css: `/* ${label} Section */
+.${cls}-section { padding: var(--space-5xl) 0; }
+.${cls}-table-wrapper {
+  overflow-x: auto; margin-top: var(--space-2xl);
+  border-radius: var(--radius-lg); border: 1px solid var(--color-neutral-200);
+}
+.${cls}-table { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
+.${cls}-table th {
+  background: var(--color-neutral-100); padding: var(--space-md) var(--space-lg);
+  text-align: left; font-weight: var(--fw-semibold);
+  color: var(--color-neutral-700); font-size: var(--fs-small);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.${cls}-table td {
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--color-neutral-200); color: var(--color-neutral-700);
+}
+.${cls}-table tr:hover td { background: var(--color-neutral-50); }`,
+        js: '',
+      };
+    }
+
+    // ── Delegate to existing dedicated generators for known patterns ──
+    case 'hero':
+      return generateHeroSection(content, sectionIndex, ctx);
+    case 'pricing':
+      return generatePricingSection(content, sectionIndex, ctx);
+    case 'faq':
+      return generateFaqSection(content, sectionIndex, ctx);
+    case 'cta':
+      return generateCtaSection(content, sectionIndex, ctx);
+
+    // ── Fallback: should never reach here ──
+    default: {
+      const fallbackDesc = content.description || defaults?.description || '';
+      return {
+        html: `<!-- ${label} Section -->
+<section class="${cls}-section section" id="${id}">
   <div class="container">
     <div class="section-header animate-on-scroll">
       <h2 class="section-title">${headline}</h2>
       ${subtitle ? `<p class="section-subtitle">${subtitle}</p>` : ''}
     </div>
     <div class="section-content animate-on-scroll">
-      ${description ? `<p>${description}</p>` : ''}
+      ${fallbackDesc ? `<p>${fallbackDesc}</p>` : ''}
     </div>
   </div>
-</section>`;
-
-  const cssClass = sectionType;
-  const css = `/* ${formatSectionName(sectionType)} Section */
-.${cssClass}-section {
-  padding: var(--space-5xl) 0;
-}`;
-
-  return { html, css, js: '' };
+</section>`,
+        css: `.${cls}-section { padding: var(--space-5xl) 0; }`,
+        js: '',
+      };
+    }
+  }
 }
 
 /** Converts "cart-items" → "Cart Items", "product-gallery" → "Product Gallery" */
 function formatSectionName(sectionType: string): string {
   return sectionType
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 // ─── Section Generator Dispatcher ───────────────────────────────────────────
@@ -3738,63 +5021,577 @@ interface SectionContext {
   brandName?: string | null;
 }
 
-type SectionGenerator = (content: SectionContent, sectionIndex: number, ctx?: SectionContext) => { html: string; css: string; js: string };
+type SectionGenerator = (
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext,
+) => { html: string; css: string; js: string };
+
+// ─── Checkout Form Section ──────────────────────────────────────────────────
+
+function generateCheckoutFormSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext,
+): { html: string; css: string; js: string } {
+  const submitBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Place Order",
+    { variant: "primary", isSubmit: true },
+  );
+
+  const html = `<!-- Checkout Form Section -->
+<section class="checkout-form-section section" id="checkout-form">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || "Secure Checkout"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
+    </div>
+    <div class="checkout-layout">
+      <form class="checkout-form animate-on-scroll" novalidate>
+        <fieldset class="checkout-fieldset">
+          <legend class="checkout-legend">Shipping Information</legend>
+          <div class="form-row form-row--2col">
+            <div class="form-group">
+              <label for="checkout-name" class="form-label">Full Name</label>
+              <input type="text" id="checkout-name" name="name" class="form-input" placeholder="John Doe" required aria-required="true" autocomplete="name">
+            </div>
+            <div class="form-group">
+              <label for="checkout-email" class="form-label">Email Address</label>
+              <input type="email" id="checkout-email" name="email" class="form-input" placeholder="john@example.com" required aria-required="true" autocomplete="email">
+            </div>
+          </div>
+          <div class="form-row form-row--2col">
+            <div class="form-group">
+              <label for="checkout-phone" class="form-label">Phone Number</label>
+              <input type="tel" id="checkout-phone" name="phone" class="form-input" placeholder="+1 (555) 000-0000" autocomplete="tel">
+            </div>
+            <div class="form-group">
+              <label for="checkout-country" class="form-label">Country</label>
+              <select id="checkout-country" name="country" class="form-input form-select" required aria-required="true" autocomplete="country-name">
+                <option value="">Select Country</option>
+                <option value="US" selected>United States</option>
+                <option value="CA">Canada</option>
+                <option value="GB">United Kingdom</option>
+                <option value="AU">Australia</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="IN">India</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="checkout-address" class="form-label">Street Address</label>
+            <input type="text" id="checkout-address" name="address" class="form-input" placeholder="123 Main Street, Apt 4B" required aria-required="true" autocomplete="street-address">
+          </div>
+          <div class="form-row form-row--3col">
+            <div class="form-group">
+              <label for="checkout-city" class="form-label">City</label>
+              <input type="text" id="checkout-city" name="city" class="form-input" placeholder="New York" required aria-required="true" autocomplete="address-level2">
+            </div>
+            <div class="form-group">
+              <label for="checkout-state" class="form-label">State</label>
+              <input type="text" id="checkout-state" name="state" class="form-input" placeholder="NY" required aria-required="true" autocomplete="address-level1">
+            </div>
+            <div class="form-group">
+              <label for="checkout-zip" class="form-label">ZIP Code</label>
+              <input type="text" id="checkout-zip" name="zip" class="form-input" placeholder="10001" required aria-required="true" autocomplete="postal-code">
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="checkout-fieldset">
+          <legend class="checkout-legend">Payment Details</legend>
+          <div class="form-group">
+            <label for="checkout-card-name" class="form-label">Name on Card</label>
+            <input type="text" id="checkout-card-name" name="card-name" class="form-input" placeholder="John Doe" required aria-required="true" autocomplete="cc-name">
+          </div>
+          <div class="form-group">
+            <label for="checkout-card" class="form-label">Card Number</label>
+            <input type="text" id="checkout-card" name="card-number" class="form-input" placeholder="4242 4242 4242 4242" maxlength="19" required aria-required="true" autocomplete="cc-number" inputmode="numeric">
+          </div>
+          <div class="form-row form-row--2col">
+            <div class="form-group">
+              <label for="checkout-expiry" class="form-label">Expiry Date</label>
+              <input type="text" id="checkout-expiry" name="expiry" class="form-input" placeholder="MM / YY" maxlength="7" required aria-required="true" autocomplete="cc-exp">
+            </div>
+            <div class="form-group">
+              <label for="checkout-cvv" class="form-label">CVV</label>
+              <input type="text" id="checkout-cvv" name="cvv" class="form-input" placeholder="123" maxlength="4" required aria-required="true" autocomplete="cc-csc" inputmode="numeric">
+            </div>
+          </div>
+          <div class="checkout-secure-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>256-bit SSL encryption — your data is secure</span>
+          </div>
+        </fieldset>
+
+        <div class="checkout-actions">
+          ${submitBtn}
+        </div>
+      </form>
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Checkout Form Section */
+.checkout-form-section { padding: var(--space-5xl) 0; }
+.checkout-layout { max-width: 720px; margin: 0 auto; }
+.checkout-form { display: flex; flex-direction: column; gap: var(--space-xl); }
+.checkout-fieldset {
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl);
+  background: var(--color-neutral-50);
+}
+.checkout-legend {
+  font-family: var(--font-heading);
+  font-size: var(--fs-h4);
+  font-weight: var(--fw-semibold);
+  color: var(--color-neutral-900);
+  padding: 0 var(--space-sm);
+}
+.form-row { display: grid; gap: var(--space-lg); }
+.form-row--2col { grid-template-columns: 1fr 1fr; }
+.form-row--3col { grid-template-columns: 2fr 1fr 1fr; }
+@media (max-width: 768px) {
+  .form-row--2col, .form-row--3col { grid-template-columns: 1fr; }
+}
+.form-group { display: flex; flex-direction: column; gap: var(--space-xs); }
+.form-label {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  color: var(--color-neutral-700);
+}
+.checkout-form .form-input {
+  padding: var(--space-md);
+  border: 1.5px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  color: var(--color-neutral-900);
+  background: white;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.checkout-form .form-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.1);
+}
+.checkout-form .form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%236a6f7c' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-md) center;
+  padding-right: var(--space-2xl);
+  cursor: pointer;
+}
+.checkout-secure-badge {
+  display: flex; align-items: center; gap: var(--space-sm);
+  padding: var(--space-md);
+  background: rgba(34, 197, 94, 0.06);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-small);
+  color: var(--color-success);
+  margin-top: var(--space-sm);
+}
+.checkout-actions {
+  display: flex; justify-content: flex-end;
+  margin-top: var(--space-md);
+}
+.checkout-actions .cta, .checkout-actions .btn-primary { width: 100%; justify-content: center; padding: var(--space-lg); font-size: var(--fs-body); }`;
+
+  return { html, css, js: "" };
+}
+
+// ─── Order Summary Section ──────────────────────────────────────────────────
+
+function generateOrderSummarySection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext,
+): { html: string; css: string; js: string } {
+  const items = content.items || [];
+  const submitBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Place Order",
+    { variant: "primary", isSubmit: true },
+  );
+
+  const itemsHtml = items
+    .map(
+      (item, i) => `
+        <div class="order-item">
+          <img src="${resolvePicsumUrl(80, 80, 500 + i)}" alt="${item.title}" width="56" height="56" loading="lazy">
+          <div class="order-item-info">
+            <span class="order-item-name">${item.title}</span>
+            <span class="order-item-detail">${item.description || ""}</span>
+          </div>
+          <span class="order-item-price">${item.price || "$0.00"}</span>
+        </div>`,
+    )
+    .join("\n");
+
+  const html = `<!-- Order Summary Section -->
+<section class="order-summary-section section" id="order-summary">
+  <div class="container">
+    <div class="summary-card animate-on-scroll">
+      <h2 class="summary-title">${content.headline || "Order Summary"}</h2>
+      <div class="order-items">
+${itemsHtml}
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-totals">
+        <div class="summary-row"><span>Subtotal</span><span>$224.96</span></div>
+        <div class="summary-row"><span>Shipping</span><span class="text-success">Free</span></div>
+        <div class="summary-row"><span>Tax</span><span>$18.00</span></div>
+        <div class="summary-divider"></div>
+        <div class="summary-row summary-total"><span>Total</span><span>$242.96</span></div>
+      </div>
+      <div class="summary-promo">
+        <input type="text" class="form-input promo-input" placeholder="Promo code" aria-label="Promo code">
+        <button type="button" class="promo-btn">Apply</button>
+      </div>
+      <div class="summary-cta">
+        ${submitBtn}
+      </div>
+      <div class="trust-badges">
+        <div class="trust-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Secure Checkout</span></div>
+        <div class="trust-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>Free Shipping</span></div>
+        <div class="trust-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg><span>30-Day Returns</span></div>
+      </div>
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Order Summary Section */
+.order-summary-section { padding: var(--space-5xl) 0; }
+.summary-card {
+  max-width: 480px; margin: 0 auto;
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-neutral-100);
+}
+.summary-title {
+  font-size: var(--fs-h3); font-weight: var(--fw-bold);
+  color: var(--color-neutral-900);
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-neutral-100);
+}
+.order-items { display: flex; flex-direction: column; gap: var(--space-md); }
+.order-item {
+  display: flex; align-items: center; gap: var(--space-md);
+}
+.order-item img {
+  width: 56px; height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.order-item-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.order-item-name { font-weight: var(--fw-medium); color: var(--color-neutral-900); font-size: var(--fs-small); }
+.order-item-detail { font-size: var(--fs-caption); color: var(--color-neutral-500); }
+.order-item-price { font-weight: var(--fw-semibold); color: var(--color-neutral-900); }
+.summary-divider { height: 1px; background: var(--color-neutral-100); margin: var(--space-md) 0; }
+.summary-totals { display: flex; flex-direction: column; gap: var(--space-sm); }
+.summary-row { display: flex; justify-content: space-between; font-size: var(--fs-body); color: var(--color-neutral-700); }
+.summary-total { font-size: var(--fs-h4); font-weight: var(--fw-bold); color: var(--color-neutral-900); padding-top: var(--space-sm); }
+.text-success { color: var(--color-success); font-weight: var(--fw-medium); }
+.summary-promo { display: flex; gap: var(--space-sm); margin-top: var(--space-lg); }
+.promo-input {
+  flex: 1; padding: var(--space-sm) var(--space-md);
+  border: 1.5px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-small);
+}
+.promo-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.1); }
+.promo-btn {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-neutral-900); color: white;
+  border: none; border-radius: var(--radius-md);
+  font-size: var(--fs-small); font-weight: var(--fw-semibold);
+  cursor: pointer; transition: background var(--transition-fast);
+}
+.promo-btn:hover { background: var(--color-neutral-700); }
+.summary-cta { margin-top: var(--space-lg); }
+.summary-cta .cta, .summary-cta .btn-primary { width: 100%; justify-content: center; padding: var(--space-lg); }
+.trust-badges { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--color-neutral-100); }
+.trust-badge { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-small); color: var(--color-neutral-500); }
+.trust-badge svg { color: var(--color-success); flex-shrink: 0; }`;
+
+  return { html, css, js: "" };
+}
+
+// ─── Cart Items Section ─────────────────────────────────────────────────────
+
+function generateCartItemsSection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext,
+): { html: string; css: string; js: string } {
+  const items = content.items || [
+    { title: "Premium Wireless Headphones", description: "Black · Over-ear", price: "$129.99" },
+    { title: "Organic Cotton T-Shirt", description: "White · Size M", price: "$29.99" },
+    { title: "Stainless Steel Water Bottle", description: "750ml · Silver", price: "$34.99" },
+  ];
+
+  const itemsHtml = items
+    .map(
+      (item, i) => `
+      <div class="cart-item animate-on-scroll" style="transition-delay: ${i * 100}ms">
+        <div class="cart-item-image">
+          <img src="${resolvePicsumUrl(120, 120, 600 + i)}" alt="${item.title}" width="80" height="80" loading="lazy">
+        </div>
+        <div class="cart-item-details">
+          <h3 class="cart-item-title">${item.title}</h3>
+          <p class="cart-item-variant">${item.description || ""}</p>
+        </div>
+        <div class="cart-item-quantity">
+          <button type="button" class="qty-btn" aria-label="Decrease quantity">−</button>
+          <span class="qty-value">1</span>
+          <button type="button" class="qty-btn" aria-label="Increase quantity">+</button>
+        </div>
+        <div class="cart-item-price">${item.price || "$0.00"}</div>
+        <button type="button" class="cart-item-remove" aria-label="Remove item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>`,
+    )
+    .join("\n");
+
+  const html = `<!-- Cart Items Section -->
+<section class="cart-items-section section" id="cart-items">
+  <div class="container">
+    <div class="section-header animate-on-scroll">
+      <h2 class="section-title">${content.headline || "Your Shopping Cart"}</h2>
+      ${content.subheadline ? `<p class="section-subtitle">${content.subheadline}</p>` : ""}
+    </div>
+    <div class="cart-items-list">
+${itemsHtml}
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Cart Items Section */
+.cart-items-section { padding: var(--space-5xl) 0; }
+.cart-items-list { display: flex; flex-direction: column; gap: var(--space-md); }
+.cart-item {
+  display: flex; align-items: center; gap: var(--space-lg);
+  padding: var(--space-lg);
+  background: white;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-neutral-100);
+  transition: box-shadow var(--transition-base);
+}
+.cart-item:hover { box-shadow: var(--shadow-md); }
+.cart-item-image img {
+  width: 80px; height: 80px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+.cart-item-details { flex: 1; }
+.cart-item-title {
+  font-family: var(--font-heading);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--color-neutral-900);
+  margin-bottom: 2px;
+}
+.cart-item-variant { font-size: var(--fs-small); color: var(--color-neutral-500); }
+.cart-item-quantity {
+  display: inline-flex; align-items: center; gap: var(--space-sm);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+.qty-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent;
+  font-size: var(--fs-body); color: var(--color-neutral-700);
+  cursor: pointer; border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+.qty-btn:hover { background: var(--color-neutral-100); }
+.qty-value {
+  min-width: 28px; text-align: center;
+  font-weight: var(--fw-semibold); font-size: var(--fs-body);
+  color: var(--color-neutral-900);
+}
+.cart-item-price {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-body);
+  color: var(--color-neutral-900);
+  min-width: 80px; text-align: right;
+}
+.cart-item-remove {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border: none; background: transparent;
+  color: var(--color-neutral-300);
+  cursor: pointer; border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.cart-item-remove:hover { color: var(--color-error); background: var(--color-error-light); }
+@media (max-width: 768px) {
+  .cart-item { flex-wrap: wrap; gap: var(--space-md); }
+  .cart-item-details { flex: 1 1 calc(100% - 100px); }
+  .cart-item-price { min-width: auto; }
+}`;
+
+  return { html, css, js: "" };
+}
+
+// ─── Cart Summary Section ───────────────────────────────────────────────────
+
+function generateCartSummarySection(
+  content: SectionContent,
+  sectionIndex: number,
+  ctx?: SectionContext,
+): { html: string; css: string; js: string } {
+  const checkoutBtn = instantiateButton(
+    ctx?.uiverse,
+    content.ctaText || "Proceed to Checkout",
+    { variant: "primary", href: "checkout.html" },
+  );
+
+  const html = `<!-- Cart Summary Section -->
+<section class="cart-summary-section section" id="cart-summary">
+  <div class="container">
+    <div class="cart-summary-card animate-on-scroll">
+      <h3 class="cart-summary-title">${content.headline || "Order Summary"}</h3>
+      <div class="cart-summary-rows">
+        <div class="cart-summary-row"><span>Subtotal (3 items)</span><span>$194.97</span></div>
+        <div class="cart-summary-row"><span>Shipping</span><span class="text-success">Free</span></div>
+        <div class="cart-summary-row"><span>Estimated Tax</span><span>$15.60</span></div>
+      </div>
+      <div class="cart-summary-divider"></div>
+      <div class="cart-summary-row cart-summary-total">
+        <span>Total</span><span>$210.57</span>
+      </div>
+      <div class="cart-summary-promo">
+        <input type="text" class="form-input" placeholder="Promo code" aria-label="Promo code">
+        <button type="button" class="promo-btn">Apply</button>
+      </div>
+      <div class="cart-summary-actions">
+        ${checkoutBtn}
+        <a href="products.html" class="continue-link">Continue Shopping</a>
+      </div>
+    </div>
+  </div>
+</section>`;
+
+  const css = `/* Cart Summary Section */
+.cart-summary-section { padding: var(--space-3xl) 0 var(--space-5xl); }
+.cart-summary-card {
+  max-width: 420px; margin: 0 auto;
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-neutral-100);
+  position: sticky; top: 100px;
+}
+.cart-summary-title {
+  font-size: var(--fs-h4); font-weight: var(--fw-bold);
+  color: var(--color-neutral-900);
+  margin-bottom: var(--space-lg);
+}
+.cart-summary-rows { display: flex; flex-direction: column; gap: var(--space-sm); }
+.cart-summary-row {
+  display: flex; justify-content: space-between;
+  font-size: var(--fs-body); color: var(--color-neutral-700);
+}
+.cart-summary-total {
+  font-size: var(--fs-h3); font-weight: var(--fw-bold);
+  color: var(--color-neutral-900);
+  padding-top: var(--space-md);
+}
+.cart-summary-divider { height: 1px; background: var(--color-neutral-100); margin: var(--space-md) 0; }
+.cart-summary-promo { display: flex; gap: var(--space-sm); margin-top: var(--space-lg); }
+.cart-summary-promo .form-input {
+  flex: 1; padding: var(--space-sm) var(--space-md);
+  border: 1.5px solid var(--color-neutral-200);
+  border-radius: var(--radius-md); font-size: var(--fs-small);
+}
+.cart-summary-promo .form-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.1); }
+.cart-summary-actions { margin-top: var(--space-xl); display: flex; flex-direction: column; gap: var(--space-md); align-items: center; }
+.cart-summary-actions .cta, .cart-summary-actions .btn-primary { width: 100%; justify-content: center; padding: var(--space-lg); }
+.continue-link {
+  font-size: var(--fs-small); color: var(--color-primary);
+  font-weight: var(--fw-medium); text-decoration: none;
+  transition: color var(--transition-fast);
+}
+.continue-link:hover { color: var(--color-primary-dark); }`;
+
+  return { html, css, js: "" };
+}
 
 const SECTION_GENERATORS: Record<string, SectionGenerator> = {
-  'hero': generateHeroSection,
-  'features': generateFeaturesSection,
-  'pricing': generatePricingSection,
-  'pricing-table': generatePricingSection,
-  'testimonials': generateTestimonialsSection,
-  'cta': generateCtaSection,
-  'faq': generateFaqSection,
-  'contact-form': generateContactFormSection,
-  'contact': generateContactFormSection,
-  'newsletter': generateNewsletterSection,
-  'footer': generateFooterSection,
-  'navigation': generateNavigationSection,
-  'navbar': generateNavigationSection,
-  'how-it-works': generateHowItWorksSection,
-  'clients': generateClientsSection,
-  'stats': generateStatsSection,
-  'stats-cards': generateStatsSection,
-  'services': generateServicesSection,
-  'services-grid': generateServicesSection,
-  'team': generateTeamSection,
-  'about': generateAboutSection,
-  'about-preview': generateAboutSection,
+  hero: generateHeroSection,
+  features: generateFeaturesSection,
+  pricing: generatePricingSection,
+  "pricing-table": generatePricingSection,
+  testimonials: generateTestimonialsSection,
+  cta: generateCtaSection,
+  faq: generateFaqSection,
+  "contact-form": generateContactFormSection,
+  contact: generateContactFormSection,
+  newsletter: generateNewsletterSection,
+  footer: generateFooterSection,
+  navigation: generateNavigationSection,
+  navbar: generateNavigationSection,
+  "how-it-works": generateHowItWorksSection,
+  clients: generateClientsSection,
+  stats: generateStatsSection,
+  "stats-cards": generateStatsSection,
+  services: generateServicesSection,
+  "services-grid": generateServicesSection,
+  team: generateTeamSection,
+  about: generateAboutSection,
+  "about-preview": generateAboutSection,
   // Restaurant / Food
-  'menu-preview': generateMenuPreviewSection,
-  'menu-items': generateMenuItemsSection,
-  'menu-categories': generateMenuCategoriesSection,
-  'specials': generateSpecialsSection,
-  'reservation-form': generateReservationFormSection,
-  'hours': generateHoursSection,
-  'location': generateLocationSection,
+  "menu-preview": generateMenuPreviewSection,
+  "menu-items": generateMenuItemsSection,
+  "menu-categories": generateMenuCategoriesSection,
+  specials: generateSpecialsSection,
+  "reservation-form": generateReservationFormSection,
+  hours: generateHoursSection,
+  location: generateLocationSection,
   // Gallery
-  'gallery': generateGallerySection,
-  'photo-grid': generatePhotoGridSection,
-  'lightbox': generateGallerySection,
+  gallery: generateGallerySection,
+  "photo-grid": generatePhotoGridSection,
+  lightbox: generateGallerySection,
   // E-commerce
-  'product-grid': generateProductGridSection,
-  'featured-products': generateProductGridSection,
+  "product-grid": generateProductGridSection,
+  "featured-products": generateProductGridSection,
+  "checkout-form": generateCheckoutFormSection,
+  checkout: generateCheckoutFormSection,
+  "order-summary": generateOrderSummarySection,
+  "order-review": generateOrderSummarySection,
+  "cart-items": generateCartItemsSection,
+  "cart-summary": generateCartSummarySection,
   // Categories
-  'categories': generateCategoriesSection,
+  categories: generateCategoriesSection,
   // Contact page
-  'map': generateMapSection,
-  'info': generateInfoSection,
+  map: generateMapSection,
+  info: generateInfoSection,
   // Blog
-  'blog-grid': generateBlogGridSection,
-  'post-grid': generateBlogGridSection,
-  'featured-posts': generateBlogGridSection,
+  "blog-grid": generateBlogGridSection,
+  "post-grid": generateBlogGridSection,
+  "featured-posts": generateBlogGridSection,
   // Portfolio
-  'project-grid': generateProjectGridSection,
-  'featured-projects': generateProjectGridSection,
+  "project-grid": generateProjectGridSection,
+  "featured-projects": generateProjectGridSection,
 };
 
 // ─── Main Tool Function ─────────────────────────────────────────────────────
 
-export function generateSection(input: GenerateSectionInput): GenerateSectionOutput {
+export function generateSection(
+  input: GenerateSectionInput,
+): GenerateSectionOutput {
   const sectionType = input.sectionType.toLowerCase().trim();
   const sectionIndex = input.sectionIndex || 0;
   const tokens = input.designTokens;
@@ -3805,7 +5602,9 @@ export function generateSection(input: GenerateSectionInput): GenerateSectionOut
   const componentsUsed = [...new Set(requiredComponents)];
 
   // Get content (user-provided or defaults)
-  const content = input.content || getDefaultContent(sectionType, (tokens.industry as string) || 'technology');
+  const content =
+    input.content ||
+    getDefaultContent(sectionType, (tokens.industry as string) || "technology", input.variationIndex);
 
   // Build section context with UIverse components and resolved images
   const sectionImages = input.imageData?.[sectionType] || null;
@@ -3817,38 +5616,45 @@ export function generateSection(input: GenerateSectionInput): GenerateSectionOut
     brandName: input.brandName || null,
   };
 
-  // Generate the section
-  const generator = SECTION_GENERATORS[sectionType] || ((c: SectionContent, i: number, _ctx?: SectionContext) => generateGenericSection(sectionType, c, i, _ctx));
+  // Generate the section — dedicated renderer if available, else pattern-based
+  const generator =
+    SECTION_GENERATORS[sectionType] ||
+    ((c: SectionContent, i: number, _ctx?: SectionContext) =>
+      generatePatternSection(sectionType, c, i, _ctx));
   const result = generator(content, sectionIndex, ctx);
 
   // ─── UIverse Component CSS Injection ─────────────────────────────────
   // If UIverse components are available, append their CSS for categories
   // used by this section. This provides the actual button/card/input styles
   // that the HTML class references (e.g., .btn, .card, .input-field).
-  let uiverseCss = '';
+  let uiverseCss = "";
   const uiverseSources: string[] = [];
 
   if (uiverse && !input.skipUIverseInjection) {
     // Map section component requirements to UIverse categories
     const categoryMapping: Record<string, string> = {
-      'button-primary': 'buttons',
-      'button-secondary': 'buttons',
-      'card': 'cards',
-      'input': 'inputs',
-      'checkbox': 'checkboxes',
-      'toggle': 'toggles',
-      'radio': 'radios',
-      'badge': 'badges',
-      'navigation': 'navigation',
-      'loader': 'loaders',
-      'tooltip': 'tooltips',
+      "button-primary": "buttons",
+      "button-secondary": "buttons",
+      card: "cards",
+      input: "inputs",
+      checkbox: "checkboxes",
+      toggle: "toggles",
+      radio: "radios",
+      badge: "badges",
+      navigation: "navigation",
+      loader: "loaders",
+      tooltip: "tooltips",
     };
 
     const injectedCategories = new Set<string>();
 
     for (const req of requiredComponents) {
       const uiverseCategory = categoryMapping[req];
-      if (uiverseCategory && !injectedCategories.has(uiverseCategory) && hasUIverseComponent(uiverse, uiverseCategory)) {
+      if (
+        uiverseCategory &&
+        !injectedCategories.has(uiverseCategory) &&
+        hasUIverseComponent(uiverse, uiverseCategory)
+      ) {
         const css = getUIverseCss(uiverse, uiverseCategory);
         if (css) {
           uiverseCss += `\n${css}\n`;
@@ -3864,14 +5670,15 @@ export function generateSection(input: GenerateSectionInput): GenerateSectionOut
     }
   }
 
-  const componentSource = uiverseSources.length > 0
-    ? `UIverse components: ${uiverseSources.join(', ')}`
-    : 'Built-in components';
+  const componentSource =
+    uiverseSources.length > 0
+      ? `UIverse components: ${uiverseSources.join(", ")}`
+      : "Built-in components";
 
   const summary = `## Section Generated: ${sectionType}
 
 **Type:** ${sectionType}
-**Components used:** ${componentsUsed.length > 0 ? componentsUsed.join(', ') : 'none (standalone section)'}
+**Components used:** ${componentsUsed.length > 0 ? componentsUsed.join(", ") : "none (standalone section)"}
 **Component source:** ${componentSource}
 **Framework:** ${input.framework}
 
